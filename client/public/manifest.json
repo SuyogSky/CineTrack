@@ -1,0 +1,18 @@
+{
+  "name": "CineTrack — Personal Media Library",
+  "short_name": "CineTrack",
+  "description": "Personal movie and TV series watchlist, custom collections, and collaborative media organizer.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d13",
+  "theme_color": "#0b0d13",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

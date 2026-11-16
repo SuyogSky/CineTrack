@@ -1,0 +1,21 @@
+{
+  "name": "cinetrack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CineTrack - Full-Stack Movie Watchlist and Collection Management Platform",
+  "scripts": {
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev",
+    "build:server": "npm --prefix server run build",
+    "build:client": "npm --prefix client run build",
+    "build": "npm run build:server && npm run build:client",
+    "test:server": "npm --prefix server run test",
+    "test:e2e": "playwright test",
+    "prisma:generate": "npm --prefix server run prisma:generate",
+    "prisma:migrate": "npm --prefix server run prisma:migrate",
+    "prisma:seed": "npm --prefix server run prisma:seed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0"
+  }
+}
