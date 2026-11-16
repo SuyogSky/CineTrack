@@ -56,6 +56,7 @@ export const WatchlistPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 
@@ -68,6 +69,7 @@ export const WatchlistPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 
@@ -365,6 +367,7 @@ export const WatchlistPage: React.FC = () => {
         entry={selectedMovieEntry}
         isOpen={!!selectedMovieEntry}
         onClose={() => setSelectedMovieEntry(null)}
+        onStatusChange={(updated) => setSelectedMovieEntry(updated)}
       />
 
       <MoveMovieDialog

@@ -19,6 +19,7 @@ interface MovieModalProps {
   isOpen: boolean;
   onClose: () => void;
   canEdit?: boolean;
+  onStatusChange?: (updatedEntry: CollectionMovie) => void;
 }
 
 export const MovieModal: React.FC<MovieModalProps> = ({
@@ -26,16 +27,23 @@ export const MovieModal: React.FC<MovieModalProps> = ({
   isOpen,
   onClose,
   canEdit = true,
+  onStatusChange,
 }) => {
   const queryClient = useQueryClient();
   const [noteText, setNoteText] = useState(entry?.note || '');
+  const [currentStatus, setCurrentStatus] = useState<'TO_WATCH' | 'WATCHED'>(
+    entry?.status || 'TO_WATCH'
+  );
   const [isSaved, setIsSaved] = useState(false);
 
-  // Sync noteText when entry changes
+  // Sync noteText and currentStatus when entry changes
   React.useEffect(() => {
-    setNoteText(entry?.note || '');
-    setIsSaved(false);
-  }, [entry]);
+    if (entry) {
+      setNoteText(entry.note || '');
+      setCurrentStatus(entry.status);
+      setIsSaved(false);
+    }
+  }, [entry?.id, entry?.status, entry?.note]);
 
   const updateMutation = useMutation({
     mutationFn: (data: { status?: 'TO_WATCH' | 'WATCHED'; note?: string | null }) => {
@@ -45,13 +53,39 @@ export const MovieModal: React.FC<MovieModalProps> = ({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['collection'] });
       queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
     },
   });
 
+  const handleToggleStatus = () => {
+    if (!entry) return;
+    const nextStatus = currentStatus === 'WATCHED' ? 'TO_WATCH' : 'WATCHED';
+    setCurrentStatus(nextStatus);
+    if (onStatusChange) {
+      onStatusChange({
+        ...entry,
+        status: nextStatus,
+        watchedAt: nextStatus === 'WATCHED' ? new Date().toISOString() : null,
+      });
+    }
+    updateMutation.mutate(
+      { status: nextStatus },
+      {
+        onError: () => {
+          setCurrentStatus(entry.status);
+          if (onStatusChange) {
+            onStatusChange(entry);
+          }
+        },
+      }
+    );
+  };
+
   if (!entry) return null;
-  const { movie, status, watchedAt } = entry;
+  const { movie } = entry;
 
   const backdropUrl = movie.backdropPath
     ? `https://image.tmdb.org/t/p/w1280${movie.backdropPath}`
@@ -77,15 +111,16 @@ export const MovieModal: React.FC<MovieModalProps> = ({
           <div className="absolute inset-0 bg-gradient-to-t from-[#121620] via-[#121620]/60 to-transparent" />
 
           {/* Quick status pill in backdrop */}
-          <div className="absolute top-4 left-6">
+          <div className="absolute top-4 left-6 z-20">
             <span
+              data-testid="modal-status-badge"
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg ${
-                status === 'WATCHED'
+                currentStatus === 'WATCHED'
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                   : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
               }`}
             >
-              {status === 'WATCHED' ? (
+              {currentStatus === 'WATCHED' ? (
                 <>
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Watched
@@ -205,20 +240,17 @@ export const MovieModal: React.FC<MovieModalProps> = ({
               {/* Status Toggle Button */}
               <button
                 type="button"
+                data-testid="modal-status-toggle-button"
                 disabled={updateMutation.isPending}
-                onClick={() =>
-                  updateMutation.mutate({
-                    status: status === 'WATCHED' ? 'TO_WATCH' : 'WATCHED',
-                  })
-                }
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
-                  status === 'WATCHED'
-                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                onClick={handleToggleStatus}
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all min-h-[44px] shadow-sm ${
+                  currentStatus === 'WATCHED'
+                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/60'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                 }`}
               >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                {status === 'WATCHED' ? 'Mark as Unwatched' : 'Mark as Watched'}
+                <CheckCircle2 className="w-4 h-4" />
+                {currentStatus === 'WATCHED' ? 'Mark as Unwatched' : 'Mark as Watched'}
               </button>
             </div>
 

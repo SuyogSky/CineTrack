@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Film, Plus, Check, Loader2, Star, Tv } from 'lucide-react';
+import { Search, Film, Plus, Check, Loader2, Star, Tv, Bookmark, Folder, Users } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { CustomSelect, SelectOption } from '../common/CustomSelect';
 import { movieService } from '../../services/movieService';
 import { collectionService } from '../../services/collectionService';
 import { MediaType, Movie } from '../../types';
@@ -112,6 +113,33 @@ export const MovieSearchModal: React.FC<MovieSearchModalProps> = ({
     ...(collectionsData?.shared || []),
   ];
 
+  const collectionOptions: SelectOption[] = React.useMemo(() => {
+    const opts: SelectOption[] = [];
+    if (defaultWatchlist) {
+      opts.push({
+        value: defaultWatchlist.id,
+        label: `${defaultWatchlist.title} (Default)`,
+        icon: <Bookmark className="w-3.5 h-3.5 text-amber-400" />,
+        badge: 'Default',
+      });
+    }
+    const custom = allCollections.filter((c) => c.id !== defaultWatchlist?.id);
+    for (const c of custom) {
+      opts.push({
+        value: c.id,
+        label: c.title,
+        icon:
+          c.userRole === 'COLLABORATOR' ? (
+            <Users className="w-3.5 h-3.5 text-sky-400" />
+          ) : (
+            <Folder className="w-3.5 h-3.5 text-indigo-400" />
+          ),
+        badge: c.userRole === 'COLLABORATOR' ? 'Shared' : undefined,
+      });
+    }
+    return opts;
+  }, [defaultWatchlist, allCollections]);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -143,24 +171,13 @@ export const MovieSearchModal: React.FC<MovieSearchModalProps> = ({
           </div>
 
           {/* Collection destination dropdown */}
-          <select
+          <CustomSelect
+            options={collectionOptions}
             value={selectedCollectionId}
-            onChange={(e) => setSelectedCollectionId(e.target.value)}
-            className="px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-zinc-300 focus:outline-none focus:border-red-500/80 transition-colors max-w-xs"
-          >
-            {defaultWatchlist && (
-              <option value={defaultWatchlist.id}>
-                ⭐ {defaultWatchlist.title} (Default)
-              </option>
-            )}
-            {allCollections
-              .filter((c) => c.id !== defaultWatchlist?.id)
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-          </select>
+            onChange={(val) => setSelectedCollectionId(val)}
+            dataTestId="search-collection-select"
+            className="w-full sm:w-64 shrink-0"
+          />
         </div>
 
         {/* Media Type Segmented Filter */}

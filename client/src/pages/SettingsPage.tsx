@@ -1,7 +1,8 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { User, Mail, Calendar, LogOut, ShieldCheck } from 'lucide-react';
+import { User, LogOut, ShieldCheck, Palette } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { ThemeToggle } from '../components/common/ThemeToggle';
 
 export const SettingsPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -20,6 +21,23 @@ export const SettingsPage: React.FC = () => {
         <p className="text-xs text-zinc-400 mt-0.5">
           Manage your CineTrack profile and session security
         </p>
+      </div>
+
+      {/* Theme & Appearance Card */}
+      <div className="p-6 rounded-3xl bg-[#121622] border border-zinc-800 space-y-4">
+        <h2 className="text-sm font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
+          <Palette className="w-4 h-4 text-amber-500" />
+          <span>Appearance & Theme</span>
+        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-zinc-900/60 border border-zinc-800/80">
+          <div>
+            <div className="text-sm font-semibold text-slate-100">Interface Theme</div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Switch between Dark and Light mode. Persists across browser sessions.
+            </p>
+          </div>
+          <ThemeToggle showLabel />
+        </div>
       </div>
 
       {/* Profile Card */}

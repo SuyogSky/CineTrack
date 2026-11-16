@@ -111,68 +111,68 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       {/* Account-wide Aggregated Metrics Row (5 Cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {/* Total Movies */}
-        <div className="p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shrink-0">
             <Film className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-slate-100">{stats?.totalMovies ?? 0}</div>
-            <div className="text-xs text-zinc-400 font-medium">Movies</div>
+          <div className="min-w-0">
+            <div className="text-xl sm:text-2xl font-black text-slate-100">{stats?.totalMovies ?? 0}</div>
+            <div className="text-[11px] sm:text-xs text-zinc-400 font-medium truncate">Movies</div>
           </div>
         </div>
 
         {/* Total TV Series */}
-        <div className="p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
             <Tv className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-slate-100">{stats?.totalTvSeries ?? 0}</div>
-            <div className="text-xs text-zinc-400 font-medium">TV Series</div>
+          <div className="min-w-0">
+            <div className="text-xl sm:text-2xl font-black text-slate-100">{stats?.totalTvSeries ?? 0}</div>
+            <div className="text-[11px] sm:text-xs text-zinc-400 font-medium truncate">TV Series</div>
           </div>
         </div>
 
         {/* Total To Watch */}
         <Link
           to="/watchlist"
-          className="p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 hover:border-zinc-700 transition-colors flex items-center gap-3.5"
+          className="p-3.5 sm:p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 hover:border-zinc-700 transition-colors flex items-center gap-3"
         >
-          <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
             <Clock className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-slate-100">{stats?.totalToWatch ?? 0}</div>
-            <div className="text-xs text-zinc-400 font-medium">To Watch</div>
+          <div className="min-w-0">
+            <div className="text-xl sm:text-2xl font-black text-slate-100">{stats?.totalToWatch ?? 0}</div>
+            <div className="text-[11px] sm:text-xs text-zinc-400 font-medium truncate">To Watch</div>
           </div>
         </Link>
 
         {/* Total Watched */}
         <Link
           to="/watchlist"
-          className="p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 hover:border-zinc-700 transition-colors flex items-center gap-3.5"
+          className="p-3.5 sm:p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 hover:border-zinc-700 transition-colors flex items-center gap-3"
         >
-          <div className="w-11 h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
             <CheckCircle2 className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-slate-100">{stats?.totalWatched ?? 0}</div>
-            <div className="text-xs text-zinc-400 font-medium">Watched</div>
+          <div className="min-w-0">
+            <div className="text-xl sm:text-2xl font-black text-slate-100">{stats?.totalWatched ?? 0}</div>
+            <div className="text-[11px] sm:text-xs text-zinc-400 font-medium truncate">Watched</div>
           </div>
         </Link>
 
         {/* Total Collections */}
         <Link
           to="/collections"
-          className="col-span-2 sm:col-span-1 p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 hover:border-zinc-700 transition-colors flex items-center gap-3.5"
+          className="col-span-2 sm:col-span-1 p-3.5 sm:p-5 rounded-2xl bg-[#121622] border border-zinc-800/80 hover:border-zinc-700 transition-colors flex items-center gap-3"
         >
-          <div className="w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 shrink-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 shrink-0">
             <FolderKanban className="w-5 h-5" />
           </div>
-          <div>
-            <div className="text-2xl font-black text-slate-100">{stats?.totalCollections ?? 0}</div>
-            <div className="text-xs text-zinc-400 font-medium">Collections</div>
+          <div className="min-w-0">
+            <div className="text-xl sm:text-2xl font-black text-slate-100">{stats?.totalCollections ?? 0}</div>
+            <div className="text-[11px] sm:text-xs text-zinc-400 font-medium truncate">Collections</div>
           </div>
         </Link>
       </div>
@@ -278,6 +278,7 @@ export const DashboardPage: React.FC = () => {
         entry={selectedMovieEntry}
         isOpen={!!selectedMovieEntry}
         onClose={() => setSelectedMovieEntry(null)}
+        onStatusChange={(updated) => setSelectedMovieEntry(updated)}
       />
     </div>
   );

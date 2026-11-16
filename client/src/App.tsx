@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { ProtectedRoute } from './components/layout/ProtectedRoute';
 
@@ -32,40 +33,42 @@ const queryClient = new QueryClient({
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+      <ThemeProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
 
-            {/* Public View-Only Collection Sharing */}
-            <Route path="/c/:shareToken" element={<PublicCollectionPage />} />
-            <Route path="/collections/share/:shareToken" element={<PublicCollectionPage />} />
+              {/* Public View-Only Collection Sharing */}
+              <Route path="/c/:shareToken" element={<PublicCollectionPage />} />
+              <Route path="/collections/share/:shareToken" element={<PublicCollectionPage />} />
 
-            {/* Protected App Routes */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <AppLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/watchlist" element={<WatchlistPage />} />
-              <Route path="/collections" element={<CollectionsListPage />} />
-              <Route path="/collections/:id" element={<CollectionDetailPage />} />
-              <Route path="/shared" element={<SharedWithMePage />} />
-              <Route path="/invitations" element={<InvitationsPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
+              {/* Protected App Routes */}
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <AppLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/watchlist" element={<WatchlistPage />} />
+                <Route path="/collections" element={<CollectionsListPage />} />
+                <Route path="/collections/:id" element={<CollectionDetailPage />} />
+                <Route path="/shared" element={<SharedWithMePage />} />
+                <Route path="/invitations" element={<InvitationsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Route>
 
-            {/* 404 Fallback */}
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+              {/* 404 Fallback */}
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </BrowserRouter>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

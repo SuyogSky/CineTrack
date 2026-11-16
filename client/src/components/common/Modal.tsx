@@ -7,6 +7,7 @@ interface ModalProps {
   title?: React.ReactNode;
   children: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
+  showCloseButton?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -15,6 +16,7 @@ export const Modal: React.FC<ModalProps> = ({
   title,
   children,
   maxWidth = 'lg',
+  showCloseButton = true,
 }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -55,20 +57,42 @@ export const Modal: React.FC<ModalProps> = ({
 
         {/* Modal Dialog Content */}
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={typeof title === 'string' ? 'modal-dialog-title' : undefined}
+          aria-label={typeof title !== 'string' ? 'Dialog' : undefined}
           className={`relative w-full ${maxWidthStyles[maxWidth]} rounded-2xl bg-[#121620] border border-zinc-800 shadow-2xl z-10 overflow-hidden my-8`}
           onClick={(e) => e.stopPropagation()}
         >
-          {title && (
+          {title ? (
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/80">
-              <h3 className="text-lg font-semibold text-slate-100">{title}</h3>
+              <h3 id="modal-dialog-title" className="text-lg font-semibold text-slate-100">
+                {title}
+              </h3>
+              {showCloseButton && (
+                <button
+                  type="button"
+                  data-testid="modal-close-button"
+                  aria-label="Close dialog"
+                  onClick={onClose}
+                  className="text-zinc-400 hover:text-slate-100 p-2 rounded-lg hover:bg-zinc-800/60 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          ) : (
+            showCloseButton && (
               <button
                 type="button"
+                data-testid="modal-close-button"
+                aria-label="Close dialog"
                 onClick={onClose}
-                className="text-zinc-400 hover:text-slate-100 p-1 rounded-lg hover:bg-zinc-800/60 transition-colors"
+                className="absolute top-4 right-4 z-40 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white border border-white/20 shadow-xl transition-all hover:scale-105 active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-red-500"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5 text-white" />
               </button>
-            </div>
+            )
           )}
           <div className="p-6">{children}</div>
         </div>

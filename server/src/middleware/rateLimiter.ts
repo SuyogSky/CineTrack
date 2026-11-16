@@ -3,7 +3,7 @@ import { env } from '../config/env';
 
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: env.NODE_ENV === 'test' ? 1000 : 30, // 30 requests per 15 min in dev/prod
+  max: env.NODE_ENV === 'production' ? 30 : 2000, // Strict in production, generous in dev/test
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -15,7 +15,7 @@ export const authRateLimiter = rateLimit({
 
 export const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: env.NODE_ENV === 'test' ? 5000 : 300,
+  max: env.NODE_ENV === 'production' ? 300 : 10000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

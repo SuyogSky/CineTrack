@@ -1,32 +1,153 @@
 @import "tailwindcss";
 
+:root {
+  --bg-app: #0b0d13;
+  --bg-surface: #121622;
+  --bg-card: #121620;
+  --bg-elevated: #161b28;
+  --border-color: rgba(63, 63, 70, 0.4);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+}
+
+html.light {
+  --bg-app: #f4f6fb;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --bg-elevated: #f1f5f9;
+  --border-color: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+}
+
 @layer base {
+  html {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+
   body {
-    background-color: #0b0d13;
-    color: #f1f5f9;
+    background-color: var(--bg-app);
+    color: var(--text-primary);
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     margin: 0;
     padding: 0;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
+    max-width: 100vw;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   /* Custom subtle scrollbar */
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #0b0d13;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #232938;
+    background: #3f3f46;
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #374151;
+    background: #52525b;
   }
+
+  html.light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+  }
+  html.light ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+}
+
+/* Light Mode Overrides for CineTrack surfaces */
+html.light .bg-\[\#0b0d13\] {
+  background-color: #f4f6fb !important;
+}
+
+html.light .bg-\[\#0b0d13\]\/90 {
+  background-color: rgba(244, 246, 251, 0.92) !important;
+}
+
+html.light .bg-\[\#0e121b\] {
+  background-color: #f8fafc !important;
+}
+
+html.light .bg-\[\#0e121b\]\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+html.light .bg-\[\#121620\],
+html.light .bg-\[\#121622\] {
+  background-color: #ffffff !important;
+  box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.05);
+}
+
+html.light .bg-zinc-900,
+html.light .bg-zinc-900\/90,
+html.light .bg-zinc-900\/60,
+html.light .bg-zinc-900\/80 {
+  background-color: #ffffff !important;
+}
+
+html.light .bg-zinc-800,
+html.light .bg-zinc-800\/80,
+html.light .bg-zinc-800\/60,
+html.light .bg-zinc-800\/40 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .border-zinc-800,
+html.light .border-zinc-800\/80,
+html.light .border-zinc-800\/60,
+html.light .border-zinc-700,
+html.light .border-zinc-700\/80,
+html.light .border-zinc-700\/60,
+html.light .border-zinc-700\/50 {
+  border-color: #e2e8f0 !important;
+}
+
+html.light .text-slate-100 {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+html.light .text-zinc-200 {
+  color: #334155 !important;
+}
+
+html.light .text-zinc-300 {
+  color: #475569 !important;
+}
+
+html.light .text-zinc-400 {
+  color: #64748b !important;
+}
+
+html.light input,
+html.light textarea,
+html.light select {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light footer {
+  border-color: #e2e8f0 !important;
+  background-color: #f8fafc !important;
 }
 
 @keyframes pulseGlow {
@@ -40,4 +161,9 @@
 
 .glow-cinematic {
   animation: pulseGlow 2.5s infinite;
+}
+
+/* Safe area inset support */
+.safe-area-inset-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }

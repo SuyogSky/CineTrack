@@ -91,6 +91,8 @@ export const CollectionDetailPage: React.FC = () => {
     }) => collectionService.updateMovie(id!, entryId, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['collection', id] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 
@@ -598,6 +600,7 @@ export const CollectionDetailPage: React.FC = () => {
         entry={selectedMovieEntry}
         isOpen={!!selectedMovieEntry}
         onClose={() => setSelectedMovieEntry(null)}
+        onStatusChange={(updated) => setSelectedMovieEntry(updated)}
       />
 
       <MoveMovieDialog

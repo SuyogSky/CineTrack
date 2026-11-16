@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { ThemeToggle } from './ThemeToggle';
 
 interface NavbarProps {
   onOpenSearch: () => void;
@@ -77,12 +78,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
         </div>
 
         {/* Right Action Bar */}
-        <div className="flex items-center gap-3">
-          {/* Quick Search Button */}
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Quick Search Button (Desktop & Tablet) */}
           <button
             type="button"
             onClick={onOpenSearch}
-            className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-400 hover:text-slate-100 hover:border-zinc-700 text-xs sm:text-sm font-medium transition-all shadow-inner"
+            className="hidden sm:flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-zinc-900/90 border border-zinc-800 text-zinc-400 hover:text-slate-100 hover:border-zinc-700 text-xs sm:text-sm font-medium transition-all shadow-inner"
           >
             <Search className="w-4 h-4 text-red-500" />
             <span className="hidden sm:inline">Search Movies...</span>
@@ -102,6 +103,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[#0b0d13]" />
             )}
           </Link>
+
+          {/* Theme Toggle Button */}
+          <ThemeToggle />
 
           {/* User Profile / Logout */}
           <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-zinc-800">
@@ -160,6 +164,10 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch }) => {
             );
           })}
           <div className="pt-3 border-t border-zinc-800/80 flex flex-col gap-1">
+            <div className="px-3 py-2 flex items-center justify-between text-zinc-400">
+              <span className="text-sm font-medium">Theme Mode</span>
+              <ThemeToggle showLabel />
+            </div>
             <Link
               to="/settings"
               onClick={() => setMobileMenuOpen(false)}

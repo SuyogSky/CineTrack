@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Dices,
@@ -11,8 +11,13 @@ import {
   Tv,
   Filter,
   Check,
+  AlertTriangle,
+  Bookmark,
+  Folder,
+  Users,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { CustomCheckbox } from '../common/CustomCheckbox';
 import { collectionService } from '../../services/collectionService';
 import { Collection, Movie, RouletteResult } from '../../types';
 
@@ -33,6 +38,7 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
 }) => {
   const effectiveColId = initialCollectionId || collectionId;
   const queryClient = useQueryClient();
+  const pickerRef = useRef<HTMLDivElement>(null);
   const [rouletteResult, setRouletteResult] = useState<RouletteResult | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
   const [emptyMessage, setEmptyMessage] = useState<string | null>(null);
@@ -79,6 +85,40 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
     return list;
   }, [defaultWatchlist, collectionsData]);
 
+  const isZeroSelected = !isAllSelected && selectedIds.length === 0;
+
+  // Handle outside clicks to dismiss dropdown
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowCollectionPicker(false);
+      }
+    };
+    if (showCollectionPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showCollectionPicker]);
+
+  // Handle Escape key to dismiss dropdown without closing modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showCollectionPicker) {
+        e.stopPropagation();
+        e.preventDefault();
+        setShowCollectionPicker(false);
+      }
+    };
+    if (showCollectionPicker) {
+      window.addEventListener('keydown', handleKeyDown, true);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [showCollectionPicker]);
+
   // Mutation to fetch random movie from chosen collections
   const rouletteMutation = useMutation({
     mutationFn: () => {
@@ -105,14 +145,15 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
   const markWatchedMutation = useMutation({
     mutationFn: async () => {
       if (!rouletteResult || !rouletteResult.entry) return;
-      const targetEntries = rouletteResult.allEntries && rouletteResult.allEntries.length > 0
-        ? rouletteResult.allEntries
-        : [
-            {
-              id: rouletteResult.entry.id,
-              collectionId: rouletteResult.entry.collectionId,
-            },
-          ];
+      const targetEntries =
+        rouletteResult.allEntries && rouletteResult.allEntries.length > 0
+          ? rouletteResult.allEntries
+          : [
+              {
+                id: rouletteResult.entry.id,
+                collectionId: rouletteResult.entry.collectionId,
+              },
+            ];
 
       await Promise.all(
         targetEntries.map((e) =>
@@ -130,6 +171,7 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
   });
 
   const spinRoulette = () => {
+    if (isZeroSelected) return;
     setIsSpinning(true);
     setEmptyMessage(null);
     setIsWatchedSuccess(false);
@@ -150,6 +192,7 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
         setIsAllSelected(false);
       } else {
         setIsAllSelected(true);
+        setSelectedIds([]);
       }
       spinRoulette();
     } else {
@@ -157,26 +200,45 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
       setEmptyMessage(null);
       setShowCollectionPicker(false);
       setIsWatchedSuccess(false);
+      setIsAllSelected(true);
+      setSelectedIds([]);
     }
   }, [isOpen, effectiveColId]);
 
-  const toggleCollection = (id: string) => {
-    setIsAllSelected(false);
-    if (selectedIds.includes(id)) {
-      const next = selectedIds.filter((item) => item !== id);
-      if (next.length === 0) {
-        setIsAllSelected(true);
-      } else {
-        setSelectedIds(next);
-      }
+  const handleToggleAll = (nextChecked: boolean) => {
+    if (nextChecked) {
+      setIsAllSelected(true);
+      setSelectedIds([]);
     } else {
-      setSelectedIds([...selectedIds, id]);
+      setIsAllSelected(false);
+      setSelectedIds([]);
     }
   };
 
-  const handleSelectAll = () => {
-    setIsAllSelected(true);
-    setSelectedIds([]);
+  const handleToggleCollection = (colId: string) => {
+    if (isAllSelected) {
+      // Uncheck this specific collection, keep the rest checked
+      setIsAllSelected(false);
+      const remaining = allAccessibleCollections
+        .filter((c) => c.id !== colId)
+        .map((c) => c.id);
+      setSelectedIds(remaining);
+    } else {
+      if (selectedIds.includes(colId)) {
+        // Uncheck
+        const next = selectedIds.filter((id) => id !== colId);
+        setSelectedIds(next);
+      } else {
+        // Check
+        const next = [...selectedIds, colId];
+        if (next.length >= allAccessibleCollections.length) {
+          setIsAllSelected(true);
+          setSelectedIds([]);
+        } else {
+          setSelectedIds(next);
+        }
+      }
+    }
   };
 
   const movie = rouletteResult?.movie;
@@ -199,7 +261,10 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
     >
       <div className="space-y-5">
         {/* Collection Pool Selector Bar */}
-        <div className="p-3 rounded-2xl bg-zinc-900/90 border border-zinc-800 flex flex-col gap-2">
+        <div
+          ref={pickerRef}
+          className="p-3 rounded-2xl bg-zinc-900/90 border border-zinc-800 flex flex-col gap-2"
+        >
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-2 text-zinc-300">
               <Filter className="w-3.5 h-3.5 text-amber-400" />
@@ -207,14 +272,19 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
               <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold">
                 {isAllSelected
                   ? `All Collections (${allAccessibleCollections.length})`
-                  : `${selectedIds.length} Collection${selectedIds.length > 1 ? 's' : ''} Selected`}
+                  : isZeroSelected
+                  ? '0 Collections Selected'
+                  : `${selectedIds.length} Collection${
+                      selectedIds.length > 1 ? 's' : ''
+                    } Selected`}
               </span>
             </div>
 
             <button
               type="button"
+              data-testid="roulette-toggle-picker-button"
               onClick={() => setShowCollectionPicker(!showCollectionPicker)}
-              className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-medium transition-colors"
+              className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-medium transition-colors min-h-[36px]"
             >
               {showCollectionPicker ? 'Hide Options' : 'Customize Pool'}
             </button>
@@ -222,50 +292,69 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
 
           {/* Collapsible Collection Selection Drawer */}
           {showCollectionPicker && (
-            <div className="pt-2 border-t border-zinc-800 space-y-2 max-h-40 overflow-y-auto pr-1">
-              <label
-                className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs cursor-pointer transition-colors ${
-                  isAllSelected
-                    ? 'bg-amber-500/15 border border-amber-500/30 text-amber-200'
-                    : 'bg-zinc-800/40 text-zinc-400 hover:bg-zinc-800/80'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isAllSelected}
-                  onChange={handleSelectAll}
-                  className="rounded border-zinc-700 text-amber-500 focus:ring-0"
-                />
-                <span className="font-semibold">✨ All Accessible Collections (Master Pool)</span>
-              </label>
+            <div
+              className="pt-2 border-t border-zinc-800 space-y-2 max-h-56 overflow-y-auto pr-1 animate-in fade-in duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <CustomCheckbox
+                dataTestId="roulette-all-collections-checkbox"
+                checked={isAllSelected}
+                onChange={handleToggleAll}
+                label="✨ All Accessible Collections (Master Pool)"
+                description="Include all default, custom, and collaborated collections"
+              />
 
               {allAccessibleCollections.map((col) => {
-                const checked = !isAllSelected && selectedIds.includes(col.id);
+                const isChecked = isAllSelected || selectedIds.includes(col.id);
                 return (
-                  <label
+                  <CustomCheckbox
                     key={col.id}
-                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs cursor-pointer transition-colors ${
-                      checked
-                        ? 'bg-amber-500/15 border border-amber-500/30 text-amber-200'
-                        : 'bg-zinc-800/40 text-zinc-400 hover:bg-zinc-800/80'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleCollection(col.id)}
-                      className="rounded border-zinc-700 text-amber-500 focus:ring-0"
-                    />
-                    <span className="truncate">{col.title}</span>
-                    {col.isDefaultWatchlist && (
-                      <span className="text-[10px] text-zinc-500">(Default)</span>
-                    )}
-                  </label>
+                    dataTestId={`roulette-collection-checkbox-${col.id}`}
+                    checked={isChecked}
+                    onChange={() => handleToggleCollection(col.id)}
+                    label={
+                      <span className="flex items-center gap-1.5 truncate">
+                        {col.isDefaultWatchlist ? (
+                          <Bookmark className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        ) : col.userRole === 'COLLABORATOR' ? (
+                          <Users className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                        ) : (
+                          <Folder className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                        )}
+                        <span className="truncate">{col.title}</span>
+                        {col.isDefaultWatchlist && (
+                          <span className="text-[10px] text-zinc-500 font-normal shrink-0">
+                            (Default)
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
                 );
               })}
+
+              <button
+                type="button"
+                data-testid="roulette-picker-done-button"
+                onClick={() => setShowCollectionPicker(false)}
+                className="w-full mt-2 py-2 px-3 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 font-semibold text-xs transition-colors"
+              >
+                Done Customizing
+              </button>
             </div>
           )}
         </div>
+
+        {/* Validation Alert for 0 Collections */}
+        {isZeroSelected && (
+          <div
+            data-testid="roulette-zero-validation-message"
+            className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2"
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Please select at least one collection to roll.</span>
+          </div>
+        )}
 
         {/* Animated Spin / Loading State */}
         {isSpinning && (
@@ -296,7 +385,7 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
             <div className="flex justify-center gap-2 pt-2">
               <button
                 type="button"
-                onClick={handleSelectAll}
+                onClick={() => handleToggleAll(true)}
                 className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold transition-colors"
               >
                 Switch to All Collections
@@ -397,8 +486,9 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
               <button
                 type="button"
                 data-testid="roulette-roll-again"
+                disabled={isSpinning || isZeroSelected}
                 onClick={spinRoulette}
-                className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-2 transition-colors"
+                className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-200 text-xs font-semibold flex items-center gap-2 transition-colors min-h-[44px]"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Pick Again</span>
