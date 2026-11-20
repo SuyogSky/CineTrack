@@ -49,7 +49,8 @@ describe('Public View-Only Collection Sharing Integration Tests', () => {
     expect(publicRes.body.data.collection.ownerUsername).toBe('curator');
     expect(publicRes.body.data.collection.movies.length).toBe(1);
     expect(publicRes.body.data.collection.movies[0].movie.title).toBe('The Dark Knight');
-    expect(publicRes.body.data.collection.movies[0].note).toBe('Iconic performance by Heath Ledger');
+    // Privacy protection: personal notes are omitted from public view
+    expect(publicRes.body.data.collection.movies[0].note).toBeUndefined();
   });
 
   it('should immediately revoke access when public sharing is disabled', async () => {

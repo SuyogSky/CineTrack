@@ -28,6 +28,7 @@ import { MovieModal } from '../components/movies/MovieModal';
 import { MoveMovieDialog } from '../components/movies/MoveMovieDialog';
 import { ShareCollectionModal } from '../components/collections/ShareCollectionModal';
 import { CollaboratorsModal } from '../components/collections/CollaboratorsModal';
+import { useToggleMovieStatus } from '../hooks/useToggleMovieStatus';
 import { Modal } from '../components/common/Modal';
 import { CollectionMovie } from '../types';
 import { Badge } from '../components/common/Badge';
@@ -80,27 +81,34 @@ export const CollectionDetailPage: React.FC = () => {
   const isOwner = collection?.userRole === 'OWNER';
   const allMovies = collection?.movies || [];
 
-  // Mutations
-  const toggleStatusMutation = useMutation({
-    mutationFn: ({
-      entryId,
-      status,
-    }: {
-      entryId: string;
-      status: 'TO_WATCH' | 'WATCHED';
-    }) => collectionService.updateMovie(id!, entryId, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['collection', id] });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-    },
-  });
+  // Centralized optimistic toggle watch status mutation
+  const toggleStatusMutation = useToggleMovieStatus();
 
   const removeMovieMutation = useMutation({
     mutationFn: (entryId: string) => collectionService.removeMovie(id!, entryId),
-    onSuccess: () => {
+    onMutate: async (entryId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['collection', id] });
+      const previousCollection = queryClient.getQueryData(['collection', id]);
+
+      queryClient.setQueryData(['collection', id], (old: any) => {
+        if (!old || !old.movies) return old;
+        return {
+          ...old,
+          movies: old.movies.filter((m: any) => m.id !== entryId),
+        };
+      });
+
+      return { previousCollection };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousCollection) {
+        queryClient.setQueryData(['collection', id], context.previousCollection);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['collection', id] });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
     },
   });
 
@@ -407,8 +415,12 @@ export const CollectionDetailPage: React.FC = () => {
                     <MovieCard
                       key={entry.id}
                       entry={entry}
-                      onToggleStatus={(id, st) =>
-                        toggleStatusMutation.mutate({ entryId: id, status: st })
+                      onToggleStatus={(entryId, st) =>
+                        toggleStatusMutation.mutate({
+                          collectionId: id || entry.collectionId,
+                          entryId,
+                          status: st,
+                        })
                       }
                       onOpenDetails={setSelectedMovieEntry}
                       onOpenMove={setMoveMovieEntry}
@@ -458,8 +470,12 @@ export const CollectionDetailPage: React.FC = () => {
                         <MovieCard
                           key={entry.id}
                           entry={entry}
-                          onToggleStatus={(id, st) =>
-                            toggleStatusMutation.mutate({ entryId: id, status: st })
+                          onToggleStatus={(entryId, st) =>
+                            toggleStatusMutation.mutate({
+                              collectionId: id || entry.collectionId,
+                              entryId,
+                              status: st,
+                            })
                           }
                           onOpenDetails={setSelectedMovieEntry}
                           onOpenMove={setMoveMovieEntry}

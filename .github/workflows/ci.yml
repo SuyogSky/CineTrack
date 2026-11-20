@@ -1,0 +1,111 @@
+name: CineTrack CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Test and Build
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: cinetrack
+          POSTGRES_PASSWORD: cinetrack123
+          POSTGRES_DB: cinetrack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      PORT: 5000
+      DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack?schema=public
+      TEST_DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public
+      EXPECTED_TEST_DATABASE_NAME: cinetrack_test
+      JWT_ACCESS_SECRET: test-access-secret-32-chars-long-min!!
+      JWT_REFRESH_SECRET: test-refresh-secret-32-chars-long-min!
+      CSRF_SECRET: test-csrf-secret-32-chars-long-min!!!!
+      CLIENT_URL: http://localhost:5173
+      CORS_ORIGIN: http://localhost:5173
+      ALLOWED_ORIGINS: http://localhost:5173
+      TRUST_PROXY: "false"
+      PLAYWRIGHT_REUSE_SERVER: "false"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Setup Test Database
+        run: |
+          docker exec ${{ job.services.postgres.id }} psql -U cinetrack -d cinetrack -c "CREATE DATABASE cinetrack_test;"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix server ci
+          npm --prefix client ci
+
+      - name: Prisma Generate & Migrate Preflight
+        run: |
+          npm --prefix server run prisma:generate
+          DATABASE_URL="$DATABASE_URL" npm --prefix server run prisma:preflight
+          DATABASE_URL="$TEST_DATABASE_URL" npm --prefix server run prisma:preflight
+
+      - name: Prisma Migrate Deploy
+        run: |
+          DATABASE_URL="$DATABASE_URL" npm --prefix server run prisma:deploy
+          DATABASE_URL="$TEST_DATABASE_URL" npm --prefix server run prisma:deploy
+
+      - name: Test Database Backup & Restore
+        run: |
+          npm --prefix server run db:test-backup
+
+      - name: Server Typecheck & Tests
+        run: |
+          npm --prefix server run test
+
+      - name: Build Server
+        run: |
+          npm --prefix server run build
+
+      - name: Build Client
+        run: |
+          npm --prefix client run build
+
+      - name: Install Playwright Browsers
+        run: |
+          npx playwright install --with-deps chromium
+
+      - name: Seed Database for E2E
+        run: |
+          DATABASE_URL="$DATABASE_URL" npm --prefix server run prisma:seed
+
+      - name: Run Playwright E2E Tests
+        env:
+          NODE_ENV: development
+        run: |
+          npx playwright test
+
+      - name: Upload Playwright Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

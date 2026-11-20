@@ -1,12 +1,32 @@
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
-import { env } from './env';
+import { env, extractDatabaseName, sanitizeDatabaseUrl } from './env';
 
-const connectionString =
-  env.NODE_ENV === 'test' && env.TEST_DATABASE_URL
-    ? env.TEST_DATABASE_URL
-    : env.DATABASE_URL;
+export { extractDatabaseName, sanitizeDatabaseUrl };
+
+function getConnectionString(): string {
+  if (env.NODE_ENV === 'test') {
+    if (!env.TEST_DATABASE_URL) {
+      throw new Error(
+        'FATAL: TEST_DATABASE_URL is strictly required in test mode. Fallback to DATABASE_URL is disabled for data safety.'
+      );
+    }
+    const dbName = extractDatabaseName(env.TEST_DATABASE_URL);
+    const expected = (env.EXPECTED_TEST_DATABASE_NAME || 'cinetrack_test').toLowerCase();
+
+    if (dbName.toLowerCase() !== expected) {
+      const sanitized = sanitizeDatabaseUrl(env.TEST_DATABASE_URL);
+      throw new Error(
+        `FATAL: Test database name "${dbName}" does not match expected test database "${expected}". Refusing to connect to: ${sanitized}`
+      );
+    }
+    return env.TEST_DATABASE_URL;
+  }
+  return env.DATABASE_URL;
+}
+
+const connectionString = getConnectionString();
 
 export const pool = new Pool({
   connectionString,

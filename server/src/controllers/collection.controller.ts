@@ -8,6 +8,7 @@ import {
   addMovieToCollectionSchema,
   updateCollectionMovieSchema,
   moveMovieSchema,
+  multiCollectionRouletteSchema,
 } from '../validators/collection.validator';
 import { sendSuccess } from '../utils/response';
 
@@ -186,27 +187,14 @@ export class CollectionController {
     next: NextFunction
   ) {
     try {
-      let collectionIds: string[] | 'ALL' | undefined;
-      let includeWatched = false;
-
-      if (req.method === 'POST') {
-        collectionIds = req.body.collectionIds;
-        includeWatched = Boolean(req.body.includeWatched);
-      } else {
-        const queryCol = req.query.collectionIds as string;
-        if (queryCol === 'ALL') {
-          collectionIds = 'ALL';
-        } else if (queryCol) {
-          collectionIds = queryCol.split(',').map((id) => id.trim());
-        }
-        includeWatched = req.query.includeWatched === 'true';
-      }
+      const rawInput = req.method === 'POST' ? req.body : req.query;
+      const validated = multiCollectionRouletteSchema.parse(rawInput);
 
       const result = await CollectionService.getRandomMovieFromCollections(
         req.user!.id,
-        collectionIds,
-        Math.random,
-        includeWatched
+        validated.collectionIds,
+        undefined,
+        validated.includeWatched
       );
 
       sendSuccess(res, result || { entry: null, movie: null, sourceCollections: [] });
@@ -225,7 +213,7 @@ export class CollectionController {
       const result = await CollectionService.getRandomMovieFromCollections(
         req.user!.id,
         [id],
-        Math.random,
+        undefined,
         false
       );
       sendSuccess(res, result || { entry: null, movie: null, sourceCollections: [] });

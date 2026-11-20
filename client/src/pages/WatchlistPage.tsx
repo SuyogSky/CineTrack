@@ -21,6 +21,7 @@ import { MovieRouletteModal } from '../components/movies/MovieRouletteModal';
 import { MovieModal } from '../components/movies/MovieModal';
 import { MoveMovieDialog } from '../components/movies/MoveMovieDialog';
 import { CollectionMovie } from '../types';
+import { useToggleMovieStatus } from '../hooks/useToggleMovieStatus';
 
 export const WatchlistPage: React.FC = () => {
   const queryClient = useQueryClient();
@@ -41,24 +42,8 @@ export const WatchlistPage: React.FC = () => {
     queryFn: collectionService.getDefaultWatchlist,
   });
 
-  // Toggle watch status mutation
-  const toggleStatusMutation = useMutation({
-    mutationFn: ({
-      entryId,
-      status,
-    }: {
-      entryId: string;
-      status: 'TO_WATCH' | 'WATCHED';
-    }) => {
-      if (!watchlist) throw new Error('No watchlist');
-      return collectionService.updateMovie(watchlist.id, entryId, { status });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
-      queryClient.invalidateQueries({ queryKey: ['collections'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-    },
-  });
+  // Centralized optimistic toggle watch status mutation
+  const toggleStatusMutation = useToggleMovieStatus();
 
   // Remove movie mutation
   const removeMutation = useMutation({
@@ -66,7 +51,26 @@ export const WatchlistPage: React.FC = () => {
       if (!watchlist) throw new Error('No watchlist');
       return collectionService.removeMovie(watchlist.id, entryId);
     },
-    onSuccess: () => {
+    onMutate: async (entryId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['defaultWatchlist'] });
+      const previousWatchlist = queryClient.getQueryData(['defaultWatchlist']);
+
+      queryClient.setQueryData(['defaultWatchlist'], (old: any) => {
+        if (!old || !old.movies) return old;
+        return {
+          ...old,
+          movies: old.movies.filter((m: any) => m.id !== entryId),
+        };
+      });
+
+      return { previousWatchlist };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousWatchlist) {
+        queryClient.setQueryData(['defaultWatchlist'], context.previousWatchlist);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
@@ -278,7 +282,11 @@ export const WatchlistPage: React.FC = () => {
                       key={entry.id}
                       entry={entry}
                       onToggleStatus={(id, st) =>
-                        toggleStatusMutation.mutate({ entryId: id, status: st })
+                        toggleStatusMutation.mutate({
+                          collectionId: watchlist?.id || entry.collectionId,
+                          entryId: id,
+                          status: st,
+                        })
                       }
                       onOpenDetails={setSelectedMovieEntry}
                       onOpenMove={setMoveMovieEntry}
@@ -329,7 +337,11 @@ export const WatchlistPage: React.FC = () => {
                           key={entry.id}
                           entry={entry}
                           onToggleStatus={(id, st) =>
-                            toggleStatusMutation.mutate({ entryId: id, status: st })
+                            toggleStatusMutation.mutate({
+                              collectionId: watchlist?.id || entry.collectionId,
+                              entryId: id,
+                              status: st,
+                            })
                           }
                           onOpenDetails={setSelectedMovieEntry}
                           onOpenMove={setMoveMovieEntry}

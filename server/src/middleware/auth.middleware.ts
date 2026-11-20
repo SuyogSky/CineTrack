@@ -1,18 +1,12 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../types';
-import {
-  verifyAccessToken,
-  verifyRefreshToken,
-  generateAccessToken,
-  hashToken,
-} from '../utils/jwt';
-import { prisma } from '../config/database';
+import { verifyAccessToken } from '../utils/jwt';
 import { sendError } from '../utils/response';
-import { env } from '../config/env';
+import { prisma } from '../config/database';
 
 export async function authenticate(
   req: AuthenticatedRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): Promise<void> {
   let accessToken: string | undefined = req.cookies?.access_token;
@@ -24,58 +18,29 @@ export async function authenticate(
   if (accessToken) {
     const payload = verifyAccessToken(accessToken);
     if (payload) {
+      if (payload.sessionId) {
+        // Immediate session revocation check: verify active session in DB
+        const session = await prisma.session.findUnique({
+          where: { id: payload.sessionId },
+          select: { id: true, revokedAt: true, expiresAt: true, userId: true },
+        });
+
+        if (
+          !session ||
+          session.revokedAt !== null ||
+          new Date(session.expiresAt) < new Date() ||
+          session.userId !== payload.id
+        ) {
+          req.user = undefined;
+          return next();
+        }
+      }
       req.user = payload;
       return next();
     }
   }
 
-  // Attempt refresh token rotation if access token is missing or expired
-  const refreshToken: string | undefined = req.cookies?.refresh_token;
-  if (!refreshToken) {
-    return next();
-  }
-
-  try {
-    const decodedRefresh = verifyRefreshToken(refreshToken);
-    if (!decodedRefresh || !decodedRefresh.sessionId) {
-      return next();
-    }
-
-    const hashed = hashToken(refreshToken);
-    const session = await prisma.session.findUnique({
-      where: { tokenHash: hashed },
-      include: { user: true },
-    });
-
-    if (
-      !session ||
-      session.revokedAt !== null ||
-      session.expiresAt < new Date() ||
-      session.userId !== decodedRefresh.id
-    ) {
-      return next();
-    }
-
-    const userPayload = {
-      id: session.user.id,
-      username: session.user.username,
-      email: session.user.email,
-    };
-
-    const newAccessToken = generateAccessToken(userPayload);
-    res.cookie('access_token', newAccessToken, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-      domain: env.COOKIE_DOMAIN || undefined,
-      maxAge: 15 * 60 * 1000,
-    });
-
-    req.user = userPayload;
-    return next();
-  } catch {
-    return next();
-  }
+  return next();
 }
 
 export function requireAuth(

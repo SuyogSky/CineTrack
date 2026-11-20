@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import {
   AppError,
+  BadRequestError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
@@ -66,25 +67,48 @@ export class CollectionService {
     });
 
     if (!watchlist) {
-      watchlist = await prisma.collection.create({
-        data: {
-          ownerId: userId,
-          title: 'My Watchlist',
-          description: 'Personal master watchlist for movies to watch.',
-          visibility: 'PRIVATE',
-          isDefaultWatchlist: true,
-        },
-        include: {
-          movies: {
-            include: {
-              movie: true,
-              adder: { select: { id: true, username: true } },
-            },
-            orderBy: { createdAt: 'desc' },
+      try {
+        watchlist = await prisma.collection.create({
+          data: {
+            ownerId: userId,
+            title: 'My Watchlist',
+            description: 'Personal master watchlist for movies to watch.',
+            visibility: 'PRIVATE',
+            isDefaultWatchlist: true,
           },
-          _count: { select: { movies: true } },
-        },
-      });
+          include: {
+            movies: {
+              include: {
+                movie: true,
+                adder: { select: { id: true, username: true } },
+              },
+              orderBy: { createdAt: 'desc' },
+            },
+            _count: { select: { movies: true } },
+          },
+        });
+      } catch (err: unknown) {
+        const error = err as { code?: string };
+        if (error?.code === 'P2002') {
+          // Concurrent request created default watchlist first; fetch it
+          watchlist = await prisma.collection.findFirst({
+            where: { ownerId: userId, isDefaultWatchlist: true },
+            include: {
+              movies: {
+                include: {
+                  movie: true,
+                  adder: { select: { id: true, username: true } },
+                },
+                orderBy: { createdAt: 'desc' },
+              },
+              _count: { select: { movies: true } },
+            },
+          });
+          if (!watchlist) throw err;
+        } else {
+          throw err;
+        }
+      }
     }
 
     return watchlist;
@@ -292,7 +316,6 @@ export class CollectionService {
         movieId: cm.movieId,
         status: cm.status,
         watchedAt: cm.watchedAt,
-        note: cm.note,
         createdAt: cm.createdAt,
         movie: cm.movie,
       })),
@@ -441,7 +464,7 @@ export class CollectionService {
   static async getRandomMovieFromCollections(
     userId: string,
     requestedCollectionIds?: string[] | 'ALL',
-    rng: () => number = Math.random,
+    rng?: () => number,
     includeWatched: boolean = false
   ) {
     // 1. Resolve accessible collections
@@ -467,9 +490,10 @@ export class CollectionService {
     if (!requestedCollectionIds || requestedCollectionIds === 'ALL') {
       targetCollectionIds = Array.from(accessibleCollectionsMap.keys());
     } else {
-      if (!Array.isArray(requestedCollectionIds) || requestedCollectionIds.length === 0) {
-        targetCollectionIds = Array.from(accessibleCollectionsMap.keys());
-      } else {
+      if (Array.isArray(requestedCollectionIds)) {
+        if (requestedCollectionIds.length === 0) {
+          throw new BadRequestError('At least one collection ID must be specified');
+        }
         // Validate access
         for (const cid of requestedCollectionIds) {
           if (!accessibleCollectionsMap.has(cid)) {
@@ -477,6 +501,8 @@ export class CollectionService {
           }
         }
         targetCollectionIds = requestedCollectionIds;
+      } else {
+        throw new BadRequestError('Invalid collection IDs parameter');
       }
     }
 
@@ -484,12 +510,36 @@ export class CollectionService {
       return null;
     }
 
-    // 2. Query movies from target collections
-    const statusFilter = includeWatched ? undefined : ('TO_WATCH' as const);
+    // 2. Reconcile with Dashboard Stats canonical rule:
+    // Any media (mediaType + tmdbId) marked WATCHED in ANY accessible collection
+    // is canonically Watched and excluded from unwatched roulette pool when includeWatched is false.
+    const watchedMediaKeySet = new Set<string>();
+    if (!includeWatched) {
+      const allAccessibleIds = Array.from(accessibleCollectionsMap.keys());
+      const watchedAcrossAccessible = await prisma.collectionMovie.findMany({
+        where: {
+          collectionId: { in: allAccessibleIds },
+          status: 'WATCHED',
+        },
+        select: {
+          movie: {
+            select: {
+              mediaType: true,
+              tmdbId: true,
+            },
+          },
+        },
+      });
+      for (const w of watchedAcrossAccessible) {
+        watchedMediaKeySet.add(`${w.movie.mediaType}:${w.movie.tmdbId}`);
+      }
+    }
+
+    // 3. Query movies from target collections
     const candidateEntries = await prisma.collectionMovie.findMany({
       where: {
         collectionId: { in: targetCollectionIds },
-        ...(statusFilter ? { status: statusFilter } : {}),
+        ...(includeWatched ? {} : { status: 'TO_WATCH' }),
       },
       include: {
         movie: true,
@@ -502,7 +552,7 @@ export class CollectionService {
       return null;
     }
 
-    // 3. Deduplicate across collections by unique media: `${mediaType}:${tmdbId}`
+    // 4. Deduplicate across collections by unique media: `${mediaType}:${tmdbId}`
     const movieCandidatesMap = new Map<
       string,
       {
@@ -514,6 +564,12 @@ export class CollectionService {
 
     for (const entry of candidateEntries) {
       const key = `${entry.movie.mediaType}:${entry.movie.tmdbId}`;
+
+      // Exclude if canonically Watched across any accessible collection
+      if (!includeWatched && watchedMediaKeySet.has(key)) {
+        continue;
+      }
+
       let group = movieCandidatesMap.get(key);
       if (!group) {
         group = {

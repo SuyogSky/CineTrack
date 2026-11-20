@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { User } from '../types';
 import { authService } from '../services/authService';
 
@@ -21,13 +22,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const queryClient = useQueryClient();
+
+  const clearUserData = useCallback(() => {
+    setUser(null);
+    queryClient.clear();
+  }, [queryClient]);
 
   const refreshUser = async () => {
     try {
       const currentUser = await authService.getMe();
       setUser(currentUser);
     } catch {
-      setUser(null);
+      clearUserData();
     }
   };
 
@@ -37,15 +44,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const currentUser = await authService.getMe();
         setUser(currentUser);
       } catch {
-        setUser(null);
+        clearUserData();
       } finally {
         setIsLoading(false);
       }
     };
     initAuth();
-  }, []);
+
+    const handleAuthExpired = () => {
+      clearUserData();
+    };
+
+    window.addEventListener('auth:expired', handleAuthExpired);
+    return () => {
+      window.removeEventListener('auth:expired', handleAuthExpired);
+    };
+  }, [clearUserData]);
 
   const login = async (data: { identifier: string; password: string }) => {
+    queryClient.clear();
     const loggedInUser = await authService.login(data);
     setUser(loggedInUser);
   };
@@ -56,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string;
     confirmPassword: string;
   }) => {
+    queryClient.clear();
     const registeredUser = await authService.register(data);
     setUser(registeredUser);
   };
@@ -64,7 +82,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await authService.logout();
     } finally {
-      setUser(null);
+      clearUserData();
     }
   };
 

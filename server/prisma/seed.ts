@@ -1,11 +1,19 @@
+import crypto from 'crypto';
 import { prisma } from '../src/config/database';
 import { hashPassword } from '../src/utils/password';
 import { MovieService } from '../src/services/movie.service';
+import { env } from '../src/config/env';
 
 async function main() {
-  console.log('🌱 Seeding database...');
+  // Production safety guard: prevent running demo seeding in production under all circumstances
+  if (env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production') {
+    console.error('⛔ FATAL: Database seeding is strictly forbidden in production environments.');
+    throw new Error('Database seeding is strictly forbidden in production mode');
+  }
 
-  // 1. Create Demo User
+  console.log('🌱 Seeding database for development/test environment...');
+
+  // 1. Create Demo User with non-predictable credentials
   const demoEmail = 'demo@cinetrack.local';
   const existingUser = await prisma.user.findUnique({
     where: { email: demoEmail },
@@ -13,7 +21,8 @@ async function main() {
 
   let demoUser = existingUser;
   if (!demoUser) {
-    const passwordHash = await hashPassword('CineTrackDemo2026!');
+    const randomPassword = crypto.randomBytes(16).toString('hex') + 'A1!';
+    const passwordHash = await hashPassword(randomPassword);
     demoUser = await prisma.user.create({
       data: {
         username: 'cinephile_demo',
@@ -21,7 +30,7 @@ async function main() {
         passwordHash,
       },
     });
-    console.log('👤 Created demo user: cinephile_demo (demo@cinetrack.local / CineTrackDemo2026!)');
+    console.log('👤 Created demo user for local test environment: cinephile_demo');
   }
 
   // 2. Ensure default watchlist
@@ -41,22 +50,23 @@ async function main() {
     });
   }
 
-  // 3. Create a Sci-Fi Classics collection
+  // 3. Create a Sci-Fi Classics collection with randomized shareToken
   let sciFiCollection = await prisma.collection.findFirst({
     where: { ownerId: demoUser.id, title: 'Must-Watch Sci-Fi' },
   });
 
   if (!sciFiCollection) {
+    const randomShareToken = 'demo-' + crypto.randomBytes(8).toString('hex');
     sciFiCollection = await prisma.collection.create({
       data: {
         ownerId: demoUser.id,
         title: 'Must-Watch Sci-Fi',
         description: 'Mind-bending science fiction masterpieces.',
         visibility: 'PUBLIC_LINK',
-        shareToken: 'demo-scifi-collection-2026',
+        shareToken: randomShareToken,
       },
     });
-    console.log('📁 Created demo collection: Must-Watch Sci-Fi (Public)');
+    console.log(`📁 Created demo collection: Must-Watch Sci-Fi (Public: ${randomShareToken})`);
   }
 
   // 4. Add Inception, Interstellar, The Matrix
@@ -116,7 +126,7 @@ async function main() {
     });
   }
 
-  console.log('✅ Seeding complete!');
+  console.log('✅ Database seeding complete.');
 }
 
 main()

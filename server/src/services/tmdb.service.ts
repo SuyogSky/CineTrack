@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { env } from '../config/env';
 import { MediaType, NormalizedMovie, PaginatedResult } from '../types';
+import { BadGatewayError, ServiceUnavailableError } from '../utils/errors';
 
 interface TmdbSearchItemResult {
   id: number;
@@ -231,8 +232,8 @@ const CURATED_MEDIA: NormalizedMovie[] = [
     title: 'Kurukshetra',
     originalTitle: 'Kurukshetra',
     overview: 'An epic television depiction of the monumental Kurukshetra war from Indian mythology, exploring honor, duty, fate, and complex familial conflict.',
-    posterPath: '/kuruKshetraPosterSample.jpg',
-    backdropPath: '/kuruKshetraBackdropSample.jpg',
+    posterPath: null,
+    backdropPath: null,
     releaseDate: '2008-01-01',
     releaseYear: 2008,
     originalLanguage: 'hi',
@@ -342,6 +343,9 @@ export class TmdbService {
 
     // Offline / fallback when no API key is provided
     if (!env.TMDB_API_KEY) {
+      if (env.NODE_ENV === 'production') {
+        throw new ServiceUnavailableError('TMDb service is unconfigured in production');
+      }
       const qLower = trimmed.toLowerCase();
       let matched = CURATED_MEDIA.filter(
         (m) =>
@@ -407,8 +411,11 @@ export class TmdbService {
 
       setToCache(cacheKey, result);
       return result;
-    } catch {
-      // Fallback to matching in curated list on error
+    } catch (err: unknown) {
+      if (env.NODE_ENV === 'production') {
+        throw new BadGatewayError('TMDb search service returned an upstream error');
+      }
+      // Fallback to matching in curated list on error in development / test
       const qLower = trimmed.toLowerCase();
       let matched = CURATED_MEDIA.filter(
         (m) =>
@@ -458,12 +465,15 @@ export class TmdbService {
     const cached = getFromCache<NormalizedMovie>(cacheKey);
     if (cached) return cached;
 
-    // Check curated catalog first
+    // Check curated catalog first in non-production
     const curated = CURATED_MEDIA.find(
       (m) => m.tmdbId === tmdbId && m.mediaType === mediaType
     );
 
     if (!env.TMDB_API_KEY) {
+      if (env.NODE_ENV === 'production') {
+        throw new ServiceUnavailableError('TMDb service is unconfigured in production');
+      }
       if (curated) {
         setToCache(cacheKey, curated);
         return curated;
@@ -483,7 +493,14 @@ export class TmdbService {
       const normalized = this.normalizeDetails(response.data, mediaType);
       setToCache(cacheKey, normalized);
       return normalized;
-    } catch {
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { status?: number } };
+      if (axiosErr?.response?.status === 404) {
+        return null;
+      }
+      if (env.NODE_ENV === 'production') {
+        throw new BadGatewayError('TMDb details service returned an upstream error');
+      }
       if (curated) {
         setToCache(cacheKey, curated);
         return curated;

@@ -29,7 +29,7 @@ export const PublicCollectionPage: React.FC = () => {
     queryKey: ['publicCollection', shareToken],
     queryFn: () => publicService.getPublicCollection(shareToken!),
     enabled: !!shareToken,
-    retry: 1,
+    retry: false,
   });
 
   if (isLoading) {

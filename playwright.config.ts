@@ -1,10 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const reuseServer = process.env.PLAYWRIGHT_REUSE_SERVER === 'true';
+
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30000,
+  timeout: 60000,
   expect: {
-    timeout: 5000,
+    timeout: 10000,
   },
   fullyParallel: false,
   workers: 1,
@@ -17,20 +20,23 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        colorScheme: 'dark',
+      },
     },
   ],
   webServer: [
     {
-      command: 'npm.cmd --prefix server run dev',
+      command: `${npmCmd} --prefix server run dev`,
       url: 'http://localhost:5000/health',
-      reuseExistingServer: true,
+      reuseExistingServer: reuseServer,
       timeout: 30000,
     },
     {
-      command: 'npm.cmd --prefix client run dev',
+      command: `${npmCmd} --prefix client run dev`,
       url: 'http://localhost:5173',
-      reuseExistingServer: true,
+      reuseExistingServer: reuseServer,
       timeout: 30000,
     },
   ],

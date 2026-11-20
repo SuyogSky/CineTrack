@@ -121,8 +121,8 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
 
   // Mutation to fetch random movie from chosen collections
   const rouletteMutation = useMutation({
-    mutationFn: () => {
-      const targetIds = isAllSelected ? 'ALL' : selectedIds;
+    mutationFn: (overrideTarget?: string[] | 'ALL') => {
+      const targetIds = overrideTarget !== undefined ? overrideTarget : (isAllSelected ? 'ALL' : selectedIds);
       return collectionService.getMultiCollectionRoulette(targetIds, false);
     },
     onSuccess: (data) => {
@@ -170,14 +170,17 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
     },
   });
 
-  const spinRoulette = () => {
-    if (isZeroSelected) return;
+  const spinRoulette = (overrideTarget?: string[] | 'ALL') => {
+    const isTargetZero = overrideTarget !== undefined
+      ? (overrideTarget !== 'ALL' && overrideTarget.length === 0)
+      : isZeroSelected;
+    if (isTargetZero) return;
     setIsSpinning(true);
     setEmptyMessage(null);
     setIsWatchedSuccess(false);
 
     setTimeout(() => {
-      rouletteMutation.mutate(undefined, {
+      rouletteMutation.mutate(overrideTarget, {
         onSettled: () => {
           setIsSpinning(false);
         },
@@ -187,14 +190,17 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      let initialTarget: string[] | 'ALL';
       if (effectiveColId) {
         setSelectedIds([effectiveColId]);
         setIsAllSelected(false);
+        initialTarget = [effectiveColId];
       } else {
         setIsAllSelected(true);
         setSelectedIds([]);
+        initialTarget = 'ALL';
       }
-      spinRoulette();
+      spinRoulette(initialTarget);
     } else {
       setRouletteResult(null);
       setEmptyMessage(null);
@@ -487,7 +493,7 @@ export const MovieRouletteModal: React.FC<MovieRouletteModalProps> = ({
                 type="button"
                 data-testid="roulette-roll-again"
                 disabled={isSpinning || isZeroSelected}
-                onClick={spinRoulette}
+                onClick={() => spinRoulette()}
                 className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-200 text-xs font-semibold flex items-center gap-2 transition-colors min-h-[44px]"
               >
                 <RotateCcw className="w-3.5 h-3.5" />

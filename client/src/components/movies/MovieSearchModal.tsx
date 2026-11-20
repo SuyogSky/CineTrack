@@ -41,8 +41,24 @@ export const MovieSearchModal: React.FC<MovieSearchModalProps> = ({
   const { data: defaultWatchlist } = useQuery({
     queryKey: ['defaultWatchlist'],
     queryFn: collectionService.getDefaultWatchlist,
-    enabled: isOpen && !targetCollectionId,
+    enabled: isOpen,
   });
+
+  const activeColId = selectedCollectionId || defaultWatchlist?.id;
+
+  // Query active collection movies so existing collection items show as already added
+  const { data: activeCollection } = useQuery({
+    queryKey: ['collection', activeColId],
+    queryFn: () => collectionService.getCollection(activeColId!),
+    enabled: isOpen && !!activeColId && activeColId !== defaultWatchlist?.id,
+  });
+
+  const currentCollectionMovies = React.useMemo(() => {
+    if (activeColId && defaultWatchlist && activeColId === defaultWatchlist.id) {
+      return defaultWatchlist.movies || [];
+    }
+    return activeCollection?.movies || [];
+  }, [activeColId, defaultWatchlist, activeCollection]);
 
   useEffect(() => {
     if (targetCollectionId) {
@@ -51,6 +67,16 @@ export const MovieSearchModal: React.FC<MovieSearchModalProps> = ({
       setSelectedCollectionId(defaultWatchlist.id);
     }
   }, [targetCollectionId, defaultWatchlist]);
+
+  // Reset temporary search state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm('');
+      setDebouncedQuery('');
+      setAddedMovieIds(new Set());
+      setErrorMessage(null);
+    }
+  }, [isOpen]);
 
   // Debounce search query
   useEffect(() => {
@@ -83,9 +109,10 @@ export const MovieSearchModal: React.FC<MovieSearchModalProps> = ({
       mediaType?: MediaType;
     }) => collectionService.addMovie(colId, { tmdbId, mediaType }),
     onSuccess: (_, variables) => {
-      const key = `${variables.mediaType || 'movie'}:${variables.tmdbId}`;
+      const typeKey = (variables.mediaType || 'movie').toLowerCase();
+      const key = `${variables.colId}:${typeKey}:${variables.tmdbId}`;
       setAddedMovieIds((prev) => new Set([...prev, key]));
-      queryClient.invalidateQueries({ queryKey: ['collection'] });
+      queryClient.invalidateQueries({ queryKey: ['collection', variables.colId] });
       queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
       queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
@@ -248,8 +275,13 @@ export const MovieSearchModal: React.FC<MovieSearchModalProps> = ({
 
           {searchResults?.items.map((movie) => {
             const rawType = movie.mediaType?.toLowerCase() === 'tv' ? 'tv' : 'movie';
-            const itemKey = `${rawType}:${movie.tmdbId}`;
-            const isAdded = addedMovieIds.has(itemKey);
+            const addKey = `${activeColId}:${rawType}:${movie.tmdbId}`;
+            const isAlreadyInTarget = currentCollectionMovies.some(
+              (m) =>
+                m.movie.tmdbId === movie.tmdbId &&
+                (m.movie.mediaType || 'movie').toLowerCase() === rawType
+            );
+            const isAdded = isAlreadyInTarget || addedMovieIds.has(addKey);
             const isPending =
               addMutation.isPending &&
               addMutation.variables?.tmdbId === movie.tmdbId;

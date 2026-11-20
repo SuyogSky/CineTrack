@@ -22,6 +22,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {
       // Fallback
     }
+    // Check system preference via media query
+    if (
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: light)').matches
+    ) {
+      return 'light';
+    }
     return 'dark'; // Default CineTrack dark cinematic aesthetic
   });
 

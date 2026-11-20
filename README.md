@@ -8,19 +8,19 @@ CineTrack allows film enthusiasts to discover movies through TMDb, manage person
 
 ## Table of Contents
 
-1. [Features](#features)
-2. [Technology Stack](#technology-stack)
-3. [Architecture & Design Principles](#architecture--design-principles)
-4. [Database Design & Mermaid ER Diagram](#database-design--mermaid-er-diagram)
-5. [Project Folder Structure](#project-folder-structure)
-6. [Prerequisites](#prerequisites)
-7. [Installation & Setup](#installation--setup)
-8. [Environment Variables](#environment-variables)
-9. [Database Setup & Migrations](#database-setup--migrations)
-10. [Running the Application](#running-the-application)
-11. [Testing Suite (Unit, Integration, E2E)](#testing-suite)
-12. [API Reference & Authorization Rules](#api-reference--authorization-rules)
-13. [Production Build & Deployment](#production-build--deployment)
+1. [Features](#1-features)
+2. [Technology Stack](#2-technology-stack)
+3. [Database Design & Mermaid ER Diagram](#3-database-design--mermaid-er-diagram)
+4. [Project Folder Structure](#4-project-folder-structure)
+5. [Prerequisites](#5-prerequisites)
+6. [Installation & Setup](#6-installation--setup)
+7. [Environment Variables](#7-environment-variables)
+8. [Database Setup & Migrations](#8-database-setup--migrations)
+9. [Running the Application](#9-running-the-application)
+10. [Testing Suite](#10-testing-suite)
+11. [API Reference & Authorization Rules](#11-api-reference--authorization-rules)
+12. [Backup, Restore, and Disaster Recovery Procedures](#12-backup-restore-and-disaster-recovery-procedures)
+13. [Production Build & Deployment](#13-production-build--deployment)
 
 ---
 
@@ -281,33 +281,46 @@ DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack?schem
 TEST_DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public"
 JWT_ACCESS_SECRET="cinetrack_dev_access_secret_key_32_chars_min_length_2026!"
 JWT_REFRESH_SECRET="cinetrack_dev_refresh_secret_key_32_chars_min_length_2026!"
+CSRF_SECRET="cinetrack_dev_csrf_secret_key_32_chars_min_length_2026!"
 CORS_ORIGIN="http://localhost:5173"
+ALLOWED_ORIGINS="http://localhost:5173"
+TRUST_PROXY="false"
 COOKIE_DOMAIN=""
 TMDB_API_KEY=""
 TMDB_BASE_URL="https://api.themoviedb.org/3"
 ```
 
-> **Note on TMDb API Key**: If `TMDB_API_KEY` is left blank, CineTrack automatically uses a curated offline catalog of real films with accurate TMDb IDs, synopsis, genres, and poster paths. When an API key is provided, CineTrack seamlessly proxies live searches to the official TMDb API.
+> **Note on Environment Variables & Production Hardening**:
+> - `CSRF_SECRET`: Dedicated HMAC key (>= 32 chars) isolated from `JWT_ACCESS_SECRET` to prevent cross-primitive cryptographic reuse.
+> - `TRUST_PROXY`: Set to `"1"` (or proxy hop count / `"true"`) when running behind reverse proxies (Nginx, Cloudflare, Fly.io, Railway, Render) so `req.ip` correctly resolves client IPs for rate-limiting.
+> - `CORS_ORIGIN` / `ALLOWED_ORIGINS`: In production, must be explicitly specified (non-empty) and cannot contain `localhost` or `127.0.0.1`.
+> - `TMDB_API_KEY`: If left blank, CineTrack automatically falls back to a curated offline catalog of real films with accurate TMDb IDs, synopsis, genres, and poster paths. When an API key is provided, CineTrack seamlessly proxies live searches to the official TMDb API.
 
 ---
 
 ## 8. Database Setup & Migrations
 
-1. **Run Prisma Migrations**:
+1. **Preflight Migration Diagnostics (Recommended for Staging & Production)**:
+   ```bash
+   npm --prefix server run prisma:preflight
+   ```
+   *Runs non-destructive diagnostic SQL queries verifying that zero case-insensitive duplicate usernames/emails exist, zero users have multiple default watchlists, and zero orphaned records exist.*
+
+2. **Run Prisma Migrations**:
    ```bash
    npm run prisma:migrate
    ```
 
-2. **Deploy to Test Database (for running tests)**:
+3. **Deploy to Test Database (for running tests)**:
    ```bash
    npm --prefix server run prisma:deploy
    ```
 
-3. **Seed Development Data**:
+4. **Seed Development Data**:
    ```bash
    npm run prisma:seed
    ```
-   *Creates a demo user: `cinephile_demo` (`demo@cinetrack.local` / `CineTrackDemo2026!`) with sample collections and films.*
+   *Generates dynamic test/dev users with secure random passwords. Strictly disabled when `NODE_ENV === 'production'` to prevent accidental data wipes.*
 
 ---
 
@@ -339,7 +352,7 @@ CineTrack includes an automated test pyramid with **100% test pass rates**:
 ```bash
 npm run test:server
 ```
-Runs 35 test cases across 9 suites covering:
+Runs **80 test cases across 16 suites** covering:
 - Argon2id password hashing and JWT token verification
 - Zod validation schemas
 - User registration, login, session revocation
@@ -351,12 +364,18 @@ Runs 35 test cases across 9 suites covering:
 - **Collection-Aware Dashboard Statistics**: Deduplication across default, custom, and collaborated collections, distinct movies vs TV series counts
 - **Multi-Collection Roulette**: Candidate pooling across collections, deduplication, "ALL" collections keyword, and IDOR protection
 - **TMDb Movie & TV Series**: Filtered search (`all`, `movie`, `tv`), collision prevention for identical numeric IDs, TV series lifecycle
+- **Case-Insensitive Auth Uniqueness**: Normalization of email and username, rejection of case-variant duplicates
+- **Default Watchlist Constraints**: Partial unique index enforcing strictly one default watchlist per user
+- **Public Collection Privacy**: Masking of private personal notes on public share links
+- **CSRF Token Verification**: Dedicated HMAC signing secret and invalid token rejection
+- **Cookie-Only Refresh Tokens**: Rejection of body/bearer tokens on refresh; immediate session revocation on logout
+- **Database Isolation & Safety**: Production seed blocking and non-destructive preflight diagnostics
 
 ### 2. Browser E2E Tests (Playwright)
 ```bash
 npm run test:e2e
 ```
-Runs 5 full end-to-end browser workflows in Chromium:
+Runs **9 comprehensive end-to-end browser workflows** in Chromium:
 - User registration & auto-created default watchlist
 - Real-time movie search & adding to watchlist
 - Toggling watched status and verifying reload persistence
@@ -365,7 +384,16 @@ Runs 5 full end-to-end browser workflows in Chromium:
 - Logged-out guest viewing public collection link without edit permissions
 - Collection-aware dashboard metrics updates across collections
 - TV series search, adding to library with TV badge, and multi-collection roulette
-- Mobile-first bottom navigation bar and mobile drawer navigation on phone viewports
+- Modal close button, backdrop dismissal, and instantaneous watched/unwatched sync
+- Pick for Us "All Collections" semantics, custom checkboxes, and outside click dropdown dismissal
+- Theme system toggle and dark/light persistence
+- Mobile-first responsive layouts across 320px, 375px, 390px, and 430px viewports with bottom navigation bar
+
+### 3. Automated Database Backup & Restore Verification
+```bash
+npm --prefix server run db:test-backup
+```
+Verifies live `pg_dump` binary snapshot generation, temporary database restoration via `pg_restore`, schema and table count integrity checks, and clean teardown.
 
 ---
 
@@ -376,10 +404,19 @@ All API routes are prefixed with `/api`.
 ### Authentication (`/api/auth`)
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| POST | `/api/auth/register` | Public | Register a new user + creates default watchlist |
-| POST | `/api/auth/login` | Public | Authenticates user and issues HttpOnly JWT cookies |
-| POST | `/api/auth/logout` | Authenticated | Revokes active session and clears cookies |
-| GET | `/api/auth/me` | Authenticated | Returns current authenticated user and counters |
+| GET | `/api/auth/csrf` | Public | Generates and sets a cryptographically signed HMAC CSRF token in an HttpOnly cookie and response body |
+| POST | `/api/auth/register` | Public | Registers a new user, hashes password with Argon2id, and creates default master watchlist |
+| POST | `/api/auth/login` | Public | Authenticates user (case-insensitively) and issues HttpOnly JWT cookies |
+| POST | `/api/auth/refresh` | Public (Cookie) | Rotates refresh token strictly from HttpOnly cookie with PostgreSQL transaction `FOR UPDATE` row lock, token reuse detection, and 10s grace period |
+| POST | `/api/auth/logout` | Authenticated | Revokes active session immediately in database and clears cookies |
+| GET | `/api/auth/me` | Authenticated | Returns current authenticated user profile after verifying active session in database |
+
+### System & Health (`/health`, `/api/health`, `/api/ready`)
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | Public | Liveness probe returning process uptime and healthy status |
+| GET | `/api/health` | Public | API liveness probe |
+| GET | `/api/ready` | Public | Readiness probe verifying active PostgreSQL database connectivity |
 
 ### Dashboard (`/api/dashboard`)
 | Method | Endpoint | Auth | Description |
@@ -410,26 +447,6 @@ All API routes are prefixed with `/api`.
 | GET | `/api/collections/:id/random` | Collaborator+ | Pick a random unwatched title from this collection |
 | POST | `/api/collections/:id/share` | Owner | Enable view-only public link sharing |
 | DELETE | `/api/collections/:id/share` | Owner | Disable view-only public link sharing |
-|---|---|---|---|
-| GET | `/api/movies/search?q=&page=` | Authenticated | Live TMDb search with server caching |
-| GET | `/api/movies/:tmdbId` | Authenticated | Retrieves canonical movie metadata |
-
-### Collections (`/api/collections`)
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/collections/default-watchlist` | Authenticated | Retrieves user's master watchlist |
-| GET | `/api/collections` | Authenticated | Lists user's owned and shared collections |
-| POST | `/api/collections` | Authenticated | Creates a new custom collection |
-| GET | `/api/collections/:id` | Authenticated | Gets collection details (Owner or Collaborator) |
-| PATCH | `/api/collections/:id` | Owner | Updates collection title/description |
-| DELETE | `/api/collections/:id` | Owner | Deletes custom collection (default watchlist cannot be deleted) |
-| POST | `/api/collections/:id/movies` | Member | Adds a movie to the collection |
-| PATCH | `/api/collections/:id/movies/:entryId` | Member | Updates status (`TO_WATCH` / `WATCHED`) or note |
-| DELETE | `/api/collections/:id/movies/:entryId` | Member | Removes movie from collection |
-| POST | `/api/collections/:id/movies/:entryId/move` | Member | Moves movie to another collection transactionally |
-| GET | `/api/collections/:id/random` | Member | **Movie Night Roulette**: selects random unwatched movie |
-| POST | `/api/collections/:id/share` | Owner | Enables public view-only link |
-| DELETE | `/api/collections/:id/share` | Owner | Revokes public link |
 | GET | `/api/collections/:id/members` | Member | Lists collaborators and pending invitations |
 | POST | `/api/collections/:id/invitations` | Owner | Invites registered user by username/email |
 | DELETE | `/api/collections/:id/members/:userId` | Owner | Removes collaborator immediately |
@@ -445,11 +462,43 @@ All API routes are prefixed with `/api`.
 ### Public Collections (`/api/public`)
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET | `/api/public/collections/:shareToken` | Public | View-only collection access for visitors |
+| GET | `/api/public/collections/:shareToken` | Public | View-only collection access for visitors (personal notes omitted) |
 
 ---
 
-## 12. Production Build & Deployment
+## 12. Backup, Restore, and Disaster Recovery Procedures
+
+### 1. Database Backup (PostgreSQL)
+Run `pg_dump` to create a binary custom-format backup of the CineTrack production database:
+```bash
+pg_dump -U cinetrack -h localhost -p 5432 -F c -b -v -f cinetrack_backup_$(date +%Y%m%d_%H%M%S).dump cinetrack
+```
+
+### 2. Database Restoration
+To restore a snapshot into a new or existing target database:
+```bash
+# 1. Ensure target database exists
+createdb -U cinetrack -h localhost -p 5432 cinetrack
+
+# 2. Restore schema and data
+pg_restore -U cinetrack -h localhost -p 5432 -d cinetrack -v cinetrack_backup_YYYYMMDD_HHMMSS.dump
+
+# 3. Apply any subsequent pending migrations
+npm --prefix server run prisma:deploy
+```
+
+### 3. Automated Backup & Restore Verification
+To verify the backup and restore procedures non-destructively:
+```bash
+npm --prefix server run db:test-backup
+```
+
+### 4. Permanent Production Seeding Safeguard
+The database seed script (`server/prisma/seed.ts`) is strictly disabled in production environments (`NODE_ENV === 'production'`). No environment variable bypass or override exists, eliminating any possibility of accidental test data overwrites in live production.
+
+---
+
+## 13. Production Build & Deployment
 
 ### 1. Build Both Applications
 ```bash
@@ -464,7 +513,24 @@ cd server
 NODE_ENV=production npm start
 ```
 
-### 3. Production Deployment Notes
+### 3. Packaging Production Distribution Archive
+To package a clean, leak-free deployment archive:
+```bash
+node scratch/package_zip.js
+```
+This generates `CineTrack-Production-Ready.zip` using strict POSIX forward-slash paths (`/`), verified with zero backslashes, zero `.env` files, zero nested ZIPs, and full extraction integrity.
+
+### 4. Production Deployment Notes
+- **Reverse Proxy**: Use Nginx, Caddy, Cloudflare, or AWS ALB to serve the frontend SPA from `client/dist` and proxy `/api` requests to the Node.js backend. Set `TRUST_PROXY="1"` (or appropriate hop count) in the backend `.env`.
+- **SSL / HTTPS**: Ensure production uses HTTPS so cookies are transmitted securely with `Secure=true` and `SameSite=lax` (or `none` for cross-site deployments).
+- **PostgreSQL Connection**: In production, supply a managed PostgreSQL URL (e.g., Supabase, Neon, AWS RDS, Cloud SQL) in `DATABASE_URL` and run `npm --prefix server run prisma:preflight` followed by `npm run prisma:deploy` during deployment.
+To package a clean, leak-free deployment archive:
+```bash
+node scratch/package_zip.js
+```
+This generates `cinetrack-final-production-candidate.zip` preserving full relative directory hierarchy with zero `.env` files, zero nested ZIPs, and zero repository artifacts.
+
+### 4. Production Deployment Notes
 - **Reverse Proxy**: Use Nginx, Caddy, or Cloudflare to serve the frontend SPA from `client/dist` and proxy `/api` requests to the Node.js backend.
 - **SSL / HTTPS**: Ensure production uses HTTPS so cookies are transmitted securely with `Secure=true` and `SameSite=lax` (or `none` for cross-site deployments).
 - **PostgreSQL Connection**: In production, supply a managed PostgreSQL URL (e.g., Supabase, Neon, AWS RDS, Cloud SQL) in `DATABASE_URL` and run `npm run prisma:deploy` during deployment.

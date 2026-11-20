@@ -1,10 +1,49 @@
-const CACHE_NAME = 'cinetrack-pwa-v1';
-const STATIC_ASSETS = ['/', '/index.html', '/favicon.svg', '/manifest.json'];
+const CACHE_NAME = 'cinetrack-pwa-v2';
+const PRECACHE_ASSETS = [
+  '/',
+  '/index.html',
+  '/favicon.svg',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png',
+];
+
+const STATIC_EXTENSIONS = /\.(js|css|svg|png|jpg|jpeg|webp|ico|woff|woff2|ttf|eot)$/i;
+
+function isCacheable(request, response) {
+  if (request.method !== 'GET' || response.status !== 200) {
+    return false;
+  }
+
+  const url = new URL(request.url);
+  if (url.pathname.startsWith('/api/') || url.pathname.includes('/api/')) {
+    return false;
+  }
+
+  // Must be same origin (avoid caching third-party responses or arbitrary origins)
+  if (url.origin !== self.location.origin) {
+    return false;
+  }
+
+  // Never cache no-store or private responses
+  const cacheControl = response.headers.get('Cache-Control') || '';
+  if (cacheControl.includes('no-store') || cacheControl.includes('private')) {
+    return false;
+  }
+
+  // Only cache navigation / app shell or safe static file extensions
+  if (request.mode === 'navigate' || STATIC_EXTENSIONS.test(url.pathname)) {
+    return true;
+  }
+
+  return false;
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(PRECACHE_ASSETS);
     })
   );
   self.skipWaiting();
@@ -15,7 +54,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
+          if (key.startsWith('cinetrack-') && key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
@@ -26,7 +65,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Do not intercept API requests or non-GET requests
+  // Never intercept API requests or non-GET requests
   if (
     event.request.method !== 'GET' ||
     event.request.url.includes('/api/') ||
@@ -39,7 +78,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
+        if (isCacheable(event.request, networkResponse)) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
 export interface SelectOption {
@@ -29,9 +29,21 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const listboxRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
+  const listboxId = useId();
 
   const selectedOption = options.find((opt) => opt.value === value);
+
+  // Auto scroll focused item into view
+  useEffect(() => {
+    if (isOpen && focusedIndex >= 0 && listboxRef.current) {
+      const optionEl = listboxRef.current.children[focusedIndex] as HTMLElement;
+      if (optionEl && optionEl.scrollIntoView) {
+        optionEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [isOpen, focusedIndex]);
 
   // Close on outside click
   useEffect(() => {
@@ -74,6 +86,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setFocusedIndex((prev) => (prev > 0 ? prev - 1 : options.length - 1));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setFocusedIndex(0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setFocusedIndex(options.length > 0 ? options.length - 1 : 0);
     } else if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (focusedIndex >= 0 && focusedIndex < options.length) {
@@ -99,8 +117,13 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       <button
         type="button"
         role="combobox"
+        aria-label={label || placeholder}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
+        aria-controls={listboxId}
+        aria-activedescendant={
+          isOpen && focusedIndex >= 0 ? `${listboxId}-opt-${focusedIndex}` : undefined
+        }
         onClick={() => setIsOpen((prev) => !prev)}
         onKeyDown={handleKeyDown}
         className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-sm text-slate-100 flex items-center justify-between gap-3 transition-colors focus:outline-none focus:border-red-500/80 focus:ring-1 focus:ring-red-500/40 shadow-sm"
@@ -128,6 +151,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       {/* Dropdown Menu */}
       {isOpen && (
         <div
+          ref={listboxRef}
+          id={listboxId}
           role="listbox"
           tabIndex={-1}
           className="absolute z-50 left-0 right-0 sm:right-auto sm:min-w-[240px] mt-1.5 rounded-xl bg-[#121622] border border-zinc-800 shadow-2xl py-1.5 max-h-60 overflow-y-auto outline-none animate-in fade-in-50 zoom-in-95 duration-100"
@@ -139,6 +164,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
             return (
               <div
                 key={option.value}
+                id={`${listboxId}-opt-${idx}`}
                 role="option"
                 aria-selected={isSelected}
                 onClick={() => {

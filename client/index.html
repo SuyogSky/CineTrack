@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <meta name="description" content="CineTrack - Personal movie & TV series watchlist and collaborative collection management platform." />
@@ -15,10 +16,16 @@
     <script>
       (function() {
         try {
-          var t = localStorage.getItem('cinetrack_theme') || 'dark';
+          var t = localStorage.getItem('cinetrack_theme');
+          if (!t) {
+            t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+          }
           document.documentElement.className = t;
           var m = document.querySelector('meta[name="theme-color"]');
           if (m) m.setAttribute('content', t === 'light' ? '#f4f6fb' : '#0b0d13');
+          if (t === 'light') {
+            document.write('<style>#initial-splash{background:#f8fafc!important;color:#0f172a!important;}#initial-splash .splash-title{color:#0f172a!important;}#initial-splash .splash-sub{color:#64748b!important;}body{background-color:#f8fafc!important;color:#0f172a!important;}</style>');
+          }
         } catch(e) {}
       })();
     </script>
@@ -38,10 +45,10 @@
             <line x1="17" y1="7" x2="22" y2="7"></line>
           </svg>
         </div>
-        <div style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">
+        <div class="splash-title" style="font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">
           Cine<span style="color:#ef4444;">Track</span>
         </div>
-        <div style="font-size:12px;color:#94a3b8;margin-top:4px;">
+        <div class="splash-sub" style="font-size:12px;color:#94a3b8;margin-top:4px;">
           Your Personal Media Library
         </div>
       </div>

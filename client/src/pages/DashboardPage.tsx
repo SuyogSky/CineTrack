@@ -24,9 +24,11 @@ import { MovieRouletteModal } from '../components/movies/MovieRouletteModal';
 import { MovieSearchModal } from '../components/movies/MovieSearchModal';
 import { MovieModal } from '../components/movies/MovieModal';
 import { CollectionMovie } from '../types';
+import { useToggleMovieStatus } from '../hooks/useToggleMovieStatus';
 
 export const DashboardPage: React.FC = () => {
   const { user } = useAuth();
+  const toggleStatusMutation = useToggleMovieStatus();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [rouletteOpen, setRouletteOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
@@ -218,6 +220,13 @@ export const DashboardPage: React.FC = () => {
                 key={entry.id}
                 entry={entry}
                 onOpenDetails={setSelectedMovieEntry}
+                onToggleStatus={(entryId, st) =>
+                  toggleStatusMutation.mutate({
+                    collectionId: entry.collectionId,
+                    entryId,
+                    status: st,
+                  })
+                }
               />
             ))}
           </div>

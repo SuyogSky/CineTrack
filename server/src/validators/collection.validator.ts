@@ -45,8 +45,35 @@ export const moveMovieSchema = z.object({
 });
 
 export const multiCollectionRouletteSchema = z.object({
-  collectionIds: z.union([z.array(z.string().uuid()), z.literal('ALL')]).optional(),
-  includeWatched: z.boolean().default(false),
+  collectionIds: z
+    .preprocess((val) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed.toUpperCase() === 'ALL') return 'ALL';
+        const parts = trimmed
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean);
+        return parts;
+      }
+      return val;
+    }, z.union([
+      z
+        .array(z.string().uuid('Invalid collection ID format'))
+        .min(1, 'At least one collection ID must be specified'),
+      z.literal('ALL'),
+    ]))
+    .optional(),
+  includeWatched: z
+    .preprocess((val) => {
+      if (typeof val === 'string') {
+        const low = val.trim().toLowerCase();
+        if (low === 'true' || low === '1') return true;
+        if (low === 'false' || low === '0') return false;
+      }
+      return val;
+    }, z.boolean())
+    .default(false),
 });
 
 export type CreateCollectionInput = z.infer<typeof createCollectionSchema>;

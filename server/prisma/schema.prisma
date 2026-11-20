@@ -153,18 +153,22 @@ model CollaborationInvitation {
 }
 
 model Session {
-  id        String    @id @default(uuid())
-  userId    String
-  tokenHash String    @unique
-  userAgent String?
-  ipAddress String?
-  expiresAt DateTime
-  revokedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                    String    @id @default(uuid())
+  userId                String
+  tokenHash             String    @unique
+  previousTokenHash     String?
+  historicalTokenHashes String[]  @default([])
+  userAgent             String?
+  ipAddress             String?
+  expiresAt             DateTime
+  revokedAt             DateTime?
+  rotatedAt             DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tokenHash])
+  @@index([previousTokenHash])
 }

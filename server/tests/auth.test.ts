@@ -110,5 +110,12 @@ describe('Authentication & User Management Integration Tests', () => {
     // After clearing cookies, unauthenticated request should fail
     const postLogoutRes = await request(app).get('/api/auth/me');
     expect(postLogoutRes.status).toBe(401);
+
+    // Immediate session revocation: even if client attempts to send old access_token cookie,
+    // the request is rejected immediately with 401 because the session in DB was revoked at logout
+    const revokedAccessRes = await request(app)
+      .get('/api/auth/me')
+      .set('Cookie', cookies);
+    expect(revokedAccessRes.status).toBe(401);
   });
 });

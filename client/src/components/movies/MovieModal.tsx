@@ -13,6 +13,7 @@ import {
 import { Modal } from '../common/Modal';
 import { CollectionMovie } from '../../types';
 import { collectionService } from '../../services/collectionService';
+import { useToggleMovieStatus } from '../../hooks/useToggleMovieStatus';
 
 interface MovieModalProps {
   entry: CollectionMovie | null;
@@ -45,6 +46,21 @@ export const MovieModal: React.FC<MovieModalProps> = ({
     }
   }, [entry?.id, entry?.status, entry?.note]);
 
+  const toggleStatusMutation = useToggleMovieStatus({
+    onSuccess: () => {
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 2000);
+    },
+    onError: () => {
+      if (entry) {
+        setCurrentStatus(entry.status);
+        if (onStatusChange) {
+          onStatusChange(entry);
+        }
+      }
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: (data: { status?: 'TO_WATCH' | 'WATCHED'; note?: string | null }) => {
       if (!entry) throw new Error('No entry');
@@ -71,17 +87,11 @@ export const MovieModal: React.FC<MovieModalProps> = ({
         watchedAt: nextStatus === 'WATCHED' ? new Date().toISOString() : null,
       });
     }
-    updateMutation.mutate(
-      { status: nextStatus },
-      {
-        onError: () => {
-          setCurrentStatus(entry.status);
-          if (onStatusChange) {
-            onStatusChange(entry);
-          }
-        },
-      }
-    );
+    toggleStatusMutation.mutate({
+      collectionId: entry.collectionId,
+      entryId: entry.id,
+      status: nextStatus,
+    });
   };
 
   if (!entry) return null;

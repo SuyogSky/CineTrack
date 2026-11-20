@@ -5,10 +5,23 @@ import cookieParser from 'cookie-parser';
 import { env } from './config/env';
 import { apiRateLimiter } from './middleware/rateLimiter';
 import { errorHandler } from './middleware/error.middleware';
+import { csrfProtection, getAllowedOrigins } from './middleware/csrf.middleware';
+import { prisma } from './config/database';
 import routes from './routes';
 import { sendError, sendSuccess } from './utils/response';
 
 export const app = express();
+
+// Explicit reverse proxy trust configuration
+if (env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', true);
+} else if (env.TRUST_PROXY === 'false') {
+  app.set('trust proxy', false);
+} else if (!isNaN(Number(env.TRUST_PROXY))) {
+  app.set('trust proxy', Number(env.TRUST_PROXY));
+} else if (env.TRUST_PROXY) {
+  app.set('trust proxy', env.TRUST_PROXY);
+}
 
 // Security headers
 app.use(
@@ -18,19 +31,13 @@ app.use(
   })
 );
 
-// CORS configuration
-const allowedOrigins = [
-  env.CORS_ORIGIN,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-].filter(Boolean);
+// CORS configuration supporting comma-separated production origins
+const allowedOrigins = getAllowedOrigins();
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      // Allow requests with no origin (mobile native apps, curl, server-to-server)
       if (!origin) return callback(null, true);
       if (allowedOrigins.indexOf(origin) !== -1 || env.NODE_ENV === 'test') {
         return callback(null, true);
@@ -39,7 +46,13 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Requested-With',
+      'X-CSRF-Token',
+      'X-XSRF-TOKEN',
+    ],
   })
 );
 
@@ -48,12 +61,25 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 
+// CSRF Protection (Double-Submit Cookie & Origin Validation)
+app.use(csrfProtection);
+
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
   sendSuccess(res, { status: 'healthy', uptime: process.uptime() }, 'Service is healthy');
 });
 app.get('/api/health', (_req: Request, res: Response) => {
   sendSuccess(res, { status: 'healthy', uptime: process.uptime() }, 'Service is healthy');
+});
+
+// Readiness check endpoint (verifies database connectivity)
+app.get('/api/ready', async (_req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    sendSuccess(res, { status: 'ready', database: 'connected' }, 'Service is ready');
+  } catch {
+    sendError(res, 'Database connection unavailable', 503, 'SERVICE_UNAVAILABLE');
+  }
 });
 
 // API rate limiting
