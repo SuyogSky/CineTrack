@@ -51,9 +51,11 @@ jobs:
           node-version: 24
           cache: 'npm'
 
-      - name: Setup Test Database
+      - name: Setup Isolated CI Databases
         run: |
+          docker exec ${{ job.services.postgres.id }} psql -U cinetrack -d cinetrack -c "CREATE DATABASE cinetrack_ci;"
           docker exec ${{ job.services.postgres.id }} psql -U cinetrack -d cinetrack -c "CREATE DATABASE cinetrack_test;"
+          docker exec ${{ job.services.postgres.id }} psql -U cinetrack -d cinetrack -c "CREATE DATABASE cinetrack_e2e;"
 
       - name: Install dependencies
         run: |
@@ -61,24 +63,37 @@ jobs:
           npm --prefix server ci
           npm --prefix client ci
 
-      - name: Prisma Generate & Migrate Preflight
+      - name: Prisma Client Generation
         run: |
           npm --prefix server run prisma:generate
-          DATABASE_URL="$DATABASE_URL" npm --prefix server run prisma:preflight
-          DATABASE_URL="$TEST_DATABASE_URL" npm --prefix server run prisma:preflight
 
-      - name: Prisma Migrate Deploy
+      - name: Fresh-Database Migration Preflight (State A Verification)
         run: |
-          DATABASE_URL="$DATABASE_URL" npm --prefix server run prisma:deploy
-          DATABASE_URL="$TEST_DATABASE_URL" npm --prefix server run prisma:deploy
+          TARGET_DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_ci?schema=public" npm --prefix server run prisma:preflight
+
+      - name: Prisma Migration Deployment
+        run: |
+          DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_ci?schema=public" npm --prefix server run prisma:deploy
+          DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public" npm --prefix server run prisma:deploy
+          DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public" npm --prefix server run prisma:deploy
+
+      - name: Existing-Schema Migration Preflight (State B Verification)
+        run: |
+          TARGET_DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_ci?schema=public" npm --prefix server run prisma:preflight
 
       - name: Test Database Backup & Restore
         run: |
-          npm --prefix server run db:test-backup
+          BACKUP_TEST_SOURCE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public" npm --prefix server run db:test-backup
 
-      - name: Server Typecheck & Tests
+      - name: Backend Typecheck & Tests
         run: |
+          npm --prefix server run typecheck
           npm --prefix server run test
+
+      - name: Frontend Lint & Typecheck
+        run: |
+          npm --prefix client run lint
+          npm --prefix client run typecheck
 
       - name: Build Server
         run: |
@@ -94,11 +109,12 @@ jobs:
 
       - name: Seed Database for E2E
         run: |
-          DATABASE_URL="$DATABASE_URL" npm --prefix server run prisma:seed
+          DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public" npm --prefix server run prisma:seed
 
       - name: Run Playwright E2E Tests
         env:
           NODE_ENV: development
+          DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public
         run: |
           npx playwright test
 

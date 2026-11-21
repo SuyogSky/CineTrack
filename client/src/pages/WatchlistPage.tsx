@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookmarkCheck,
   Search,
-  Filter,
   ArrowUpDown,
   Plus,
   Dices,

@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$zipName = "CineTrack-Production-Ready.zip"
+$zipName = "CineTrack-Production-Ready-Final.zip"
 $zipPath = Join-Path $projectRoot $zipName
 $stagingDir = Join-Path $projectRoot "staging_archive"
 $testExtractDir = Join-Path $projectRoot "test_extract_verify"
@@ -128,6 +128,9 @@ $requiredFound = @{
     '.github/workflows/ci.yml' = $false
     'server/.env.example' = $false
     'client/.env.example' = $false
+    'docs/PRODUCTION_READINESS_FINAL_REPORT.md' = $false
+    'docs/TEST_EXECUTION_REPORT.md' = $false
+    'docs/PRODUCTION_DEPLOYMENT_GUIDE.md' = $false
 }
 
 $disallowedRootFiles = @(

@@ -19,7 +19,7 @@ import {
 import { Modal } from '../common/Modal';
 import { CustomCheckbox } from '../common/CustomCheckbox';
 import { collectionService } from '../../services/collectionService';
-import { Collection, Movie, RouletteResult } from '../../types';
+import { Collection, RouletteResult } from '../../types';
 
 interface MovieRouletteModalProps {
   isOpen: boolean;

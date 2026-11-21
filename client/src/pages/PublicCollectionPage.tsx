@@ -7,11 +7,8 @@ import {
   Star,
   CheckCircle2,
   Clock,
-  StickyNote,
   Loader2,
-  Calendar,
   AlertCircle,
-  Sparkles,
 } from 'lucide-react';
 import { publicService } from '../services/publicService';
 import { Badge } from '../components/common/Badge';

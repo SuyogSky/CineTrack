@@ -341,52 +341,65 @@ export class AuthService {
     };
   }
 
-  static async logout(refreshToken?: string, accessToken?: string) {
-    try {
-      // 1. If accessToken provided, revoke session immediately by its embedded sessionId
-      if (accessToken) {
+  static async logout(refreshToken?: string, accessToken?: string): Promise<{ revoked: boolean }> {
+    const targetSessionIds = new Set<string>();
+    let hashedToken: string | null = null;
+
+    if (accessToken) {
+      try {
         const decodedAccess = verifyAccessToken(accessToken);
         if (decodedAccess?.sessionId) {
-          await prisma.session.updateMany({
-            where: {
-              id: decodedAccess.sessionId,
-              revokedAt: null,
-            },
-            data: { revokedAt: new Date() },
-          });
+          targetSessionIds.add(decodedAccess.sessionId);
         }
+      } catch {
+        // Invalid or expired access token: ignore token decoding error and proceed
       }
-
-      // 2. If refreshToken provided, revoke session by sessionId or token hashes
-      if (refreshToken) {
-        const decoded = verifyRefreshToken(refreshToken);
-        const hashed = hashToken(refreshToken);
-
-        if (decoded?.sessionId) {
-          await prisma.session.updateMany({
-            where: {
-              id: decoded.sessionId,
-              revokedAt: null,
-            },
-            data: { revokedAt: new Date() },
-          });
-        } else {
-          await prisma.session.updateMany({
-            where: {
-              OR: [
-                { tokenHash: hashed },
-                { previousTokenHash: hashed },
-                { historicalTokenHashes: { has: hashed } },
-              ],
-              revokedAt: null,
-            },
-            data: { revokedAt: new Date() },
-          });
-        }
-      }
-    } catch {
-      // Ignore if session not found or invalid
     }
+
+    if (refreshToken) {
+      try {
+        const decodedRefresh = verifyRefreshToken(refreshToken);
+        if (decodedRefresh?.sessionId) {
+          targetSessionIds.add(decodedRefresh.sessionId);
+        }
+      } catch {
+        // Invalid or expired refresh token: proceed with hash lookup
+      }
+
+      try {
+        hashedToken = hashToken(refreshToken);
+      } catch {
+        // Invalid token format for hashing
+      }
+    }
+
+    const whereClauses: Array<Record<string, unknown>> = [];
+
+    if (targetSessionIds.size > 0) {
+      whereClauses.push({ id: { in: Array.from(targetSessionIds) } });
+    }
+
+    if (hashedToken) {
+      whereClauses.push({ tokenHash: hashedToken });
+      whereClauses.push({ previousTokenHash: hashedToken });
+      whereClauses.push({ historicalTokenHashes: { has: hashedToken } });
+    }
+
+    if (whereClauses.length === 0) {
+      // Idempotent: no session or token could be identified
+      return { revoked: false };
+    }
+
+    // Database revocation operation. Database outages or query failures will throw and NOT be swallowed.
+    const result = await prisma.session.updateMany({
+      where: {
+        OR: whereClauses,
+        revokedAt: null,
+      },
+      data: { revokedAt: new Date() },
+    });
+
+    return { revoked: result.count > 0 };
   }
 
   static async getCurrentUser(userId: string) {

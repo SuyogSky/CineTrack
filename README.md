@@ -241,9 +241,10 @@ CineTrack/
 
 ## 5. Prerequisites
 
-- **Node.js**: v20 or higher (v24 recommended)
-- **npm**: v10 or higher
-- **PostgreSQL**: v14 or higher (v18 supported)
+- **Node.js**: v20 or higher (v24.16.0 verified and recommended)
+- **npm**: v10 or higher (v11.13.0 verified)
+- **PostgreSQL**: v14 or higher (v18.6 verified and recommended)
+- **TypeScript**: Server TypeScript 7.0.2, Client TypeScript 6.0.3 (both verified)
 
 ---
 
@@ -279,6 +280,7 @@ PORT=5000
 NODE_ENV=development
 DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack?schema=public"
 TEST_DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public"
+EXPECTED_TEST_DATABASE_NAME="cinetrack_test"
 JWT_ACCESS_SECRET="cinetrack_dev_access_secret_key_32_chars_min_length_2026!"
 JWT_REFRESH_SECRET="cinetrack_dev_refresh_secret_key_32_chars_min_length_2026!"
 CSRF_SECRET="cinetrack_dev_csrf_secret_key_32_chars_min_length_2026!"
@@ -290,21 +292,43 @@ TMDB_API_KEY=""
 TMDB_BASE_URL="https://api.themoviedb.org/3"
 ```
 
-> **Note on Environment Variables & Production Hardening**:
-> - `CSRF_SECRET`: Dedicated HMAC key (>= 32 chars) isolated from `JWT_ACCESS_SECRET` to prevent cross-primitive cryptographic reuse.
-> - `TRUST_PROXY`: Set to `"1"` (or proxy hop count / `"true"`) when running behind reverse proxies (Nginx, Cloudflare, Fly.io, Railway, Render) so `req.ip` correctly resolves client IPs for rate-limiting.
-> - `CORS_ORIGIN` / `ALLOWED_ORIGINS`: In production, must be explicitly specified (non-empty) and cannot contain `localhost` or `127.0.0.1`.
-> - `TMDB_API_KEY`: If left blank, CineTrack automatically falls back to a curated offline catalog of real films with accurate TMDb IDs, synopsis, genres, and poster paths. When an API key is provided, CineTrack seamlessly proxies live searches to the official TMDb API.
+### Production Security Secrets & Configuration Rules
+In production (`NODE_ENV=production`), the application enforces strict startup validation:
+1. **Pairwise Distinct Secrets**: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `CSRF_SECRET` must each be at least 32 characters long, cryptographically strong, and **strictly distinct from one another**. Shared secrets across primitives are rejected on startup.
+2. **Secret Generation Commands**:
+   - **PowerShell (Windows)**:
+     ```powershell
+     node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+     ```
+   - **Bash / Unix**:
+     ```bash
+     openssl rand -hex 32
+     ```
+3. **Strict Production CORS Validation**:
+   - Origins must be explicit public HTTPS URLs (e.g. `https://cinetrack.example.com`).
+   - Multiple origins may be supplied as a comma-separated list (`https://app.cinetrack.com, https://admin.cinetrack.com`).
+   - Wildcards (`*`), HTTP schemes, localhost, loopbacks (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), and private networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`) are strictly rejected in production.
+   - Origins must not contain paths, query parameters, or hash fragments.
+4. **Reverse Proxy Trust**: Set `TRUST_PROXY="1"` (or appropriate proxy hop count) when operating behind Nginx, Cloudflare, AWS ALB, Render, or Fly.io so Express correctly attributes client IP addresses for rate limiting.
+5. **Cookie Security & SameSite Policy**:
+   - **Authentication Cookies (`access_token`, `refresh_token`)**: Always `HttpOnly=true` (inaccessible to JavaScript), `path='/'`, with `Secure=true` in production.
+   - **SameSite Configuration (`COOKIE_SAMESITE`)**: Defaults to `lax` (strongly recommended for same-domain or reverse-proxy architectures such as `https://cinetrack.example.com` and `https://cinetrack.example.com/api`). When deploying across separate origins (e.g. `https://cinetrack.vercel.app` and `https://api.railway.app`), set `COOKIE_SAMESITE=none` (strictly requires HTTPS and `Secure=true`).
+   - **CSRF Token Cookie (`csrf_token`)**: Intentionally uses `HttpOnly=false` for the double-submit cookie pattern so frontend JavaScript can read the token and transmit it via the `x-csrf-token` HTTP header on state-changing requests (`POST`, `PATCH`, `DELETE`). The cookie is HMAC-signed on the server using `CSRF_SECRET` to prevent tampering.
+6. **TMDb Integration**: If `TMDB_API_KEY` is omitted, CineTrack operates seamlessly using its curated local offline catalog. Supplying a valid TMDb v3 API key enables real-time search proxies.
 
 ---
 
 ## 8. Database Setup & Migrations
 
-1. **Preflight Migration Diagnostics (Recommended for Staging & Production)**:
+1. **Preflight Migration Diagnostics (Mandatory for Staging & Production)**:
    ```bash
    npm --prefix server run prisma:preflight
    ```
-   *Runs non-destructive diagnostic SQL queries verifying that zero case-insensitive duplicate usernames/emails exist, zero users have multiple default watchlists, and zero orphaned records exist.*
+   *The preflight runner classifies the target database into one of four distinct states:*
+   - **State A (`EMPTY`)**: 0 tables in the public schema. Verified clean for initial migration deployment.
+   - **State B (`VALID`)**: Complete application schema present (all 7 core tables: `User`, `Collection`, `Movie`, `CollectionMovie`, `CollectionMember`, `CollaborationInvitation`, `Session`), Prisma migration metadata table matches disk migrations, all column definitions and enums valid, and zero data integrity conflicts.
+   - **State C (`PARTIAL`)**: Partially initialized schema (1 to 6 tables), application tables exist without `_prisma_migrations`, pending unapplied disk migrations, failed migrations recorded in history, or missing required columns. **Fails closed immediately** with actionable remediation steps.
+   - **State D (`INCONSISTENT`)**: Unrelated tables detected in schema (e.g., `contest_entries`), migration history present with 0 application tables, unknown foreign migrations in database history, or data integrity violations (duplicate usernames/emails, multiple default watchlists, orphaned foreign keys). **Fails closed immediately**.
 
 2. **Run Prisma Migrations**:
    ```bash
@@ -352,7 +376,7 @@ CineTrack includes an automated test pyramid with **100% test pass rates**:
 ```bash
 npm run test:server
 ```
-Runs **80 test cases across 16 suites** covering:
+Runs **164 test cases across 22 test files** covering:
 - Argon2id password hashing and JWT token verification
 - Zod validation schemas
 - User registration, login, session revocation
@@ -369,7 +393,11 @@ Runs **80 test cases across 16 suites** covering:
 - **Public Collection Privacy**: Masking of private personal notes on public share links
 - **CSRF Token Verification**: Dedicated HMAC signing secret and invalid token rejection
 - **Cookie-Only Refresh Tokens**: Rejection of body/bearer tokens on refresh; immediate session revocation on logout
-- **Database Isolation & Safety**: Production seed blocking and non-destructive preflight diagnostics
+- **Mandatory Session Validation**: Access tokens strictly require valid `sessionId`; middleware validates active database session on every authenticated request; fails closed on database lookup errors
+- **Migration Preflight States**: Real PostgreSQL integration tests covering all 16 states (Empty, Valid, Missing tables, Missing columns, Inconsistent migrations, Failed migrations, Duplicates, and Orphaned records)
+- **Distinct Production Secrets**: Rejection of shared, weak, placeholder, or identical secrets
+- **Hardened CORS Validation**: Rejection of HTTP, localhost, loopbacks, private IPv4/IPv6, and malformed origins in production
+- **Backup & Restore Integration**: Positive and negative backup tests, corrupt dump rejection, collision safety, and guaranteed cleanup
 
 ### 2. Browser E2E Tests (Playwright)
 ```bash
@@ -393,7 +421,7 @@ Runs **9 comprehensive end-to-end browser workflows** in Chromium:
 ```bash
 npm --prefix server run db:test-backup
 ```
-Verifies live `pg_dump` binary snapshot generation, temporary database restoration via `pg_restore`, schema and table count integrity checks, and clean teardown.
+Verifies live `pg_dump` binary snapshot generation, temporary database restoration via `pg_restore`, schema and table count integrity checks, row-level checksum comparison, relational query usability, and guaranteed `finally` teardown.
 
 ---
 
@@ -404,7 +432,7 @@ All API routes are prefixed with `/api`.
 ### Authentication (`/api/auth`)
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
-| GET | `/api/auth/csrf` | Public | Generates and sets a cryptographically signed HMAC CSRF token in an HttpOnly cookie and response body |
+| GET | `/api/auth/csrf` | Public | Generates and sets a cryptographically signed HMAC CSRF token in a double-submit cookie (`httpOnly: false`) and response payload |
 | POST | `/api/auth/register` | Public | Registers a new user, hashes password with Argon2id, and creates default master watchlist |
 | POST | `/api/auth/login` | Public | Authenticates user (case-insensitively) and issues HttpOnly JWT cookies |
 | POST | `/api/auth/refresh` | Public (Cookie) | Rotates refresh token strictly from HttpOnly cookie with PostgreSQL transaction `FOR UPDATE` row lock, token reuse detection, and 10s grace period |
@@ -518,19 +546,16 @@ To package a clean, leak-free deployment archive:
 ```bash
 node scratch/package_zip.js
 ```
-This generates `CineTrack-Production-Ready.zip` using strict POSIX forward-slash paths (`/`), verified with zero backslashes, zero `.env` files, zero nested ZIPs, and full extraction integrity.
+This generates `CineTrack-Production-Ready-Final.zip` using strict POSIX forward-slash paths (`/`), verified with zero backslashes, zero `.env` files, zero nested ZIPs, and full extraction integrity.
 
-### 4. Production Deployment Notes
-- **Reverse Proxy**: Use Nginx, Caddy, Cloudflare, or AWS ALB to serve the frontend SPA from `client/dist` and proxy `/api` requests to the Node.js backend. Set `TRUST_PROXY="1"` (or appropriate hop count) in the backend `.env`.
-- **SSL / HTTPS**: Ensure production uses HTTPS so cookies are transmitted securely with `Secure=true` and `SameSite=lax` (or `none` for cross-site deployments).
-- **PostgreSQL Connection**: In production, supply a managed PostgreSQL URL (e.g., Supabase, Neon, AWS RDS, Cloud SQL) in `DATABASE_URL` and run `npm --prefix server run prisma:preflight` followed by `npm run prisma:deploy` during deployment.
-To package a clean, leak-free deployment archive:
-```bash
-node scratch/package_zip.js
-```
-This generates `cinetrack-final-production-candidate.zip` preserving full relative directory hierarchy with zero `.env` files, zero nested ZIPs, and zero repository artifacts.
-
-### 4. Production Deployment Notes
-- **Reverse Proxy**: Use Nginx, Caddy, or Cloudflare to serve the frontend SPA from `client/dist` and proxy `/api` requests to the Node.js backend.
-- **SSL / HTTPS**: Ensure production uses HTTPS so cookies are transmitted securely with `Secure=true` and `SameSite=lax` (or `none` for cross-site deployments).
-- **PostgreSQL Connection**: In production, supply a managed PostgreSQL URL (e.g., Supabase, Neon, AWS RDS, Cloud SQL) in `DATABASE_URL` and run `npm run prisma:deploy` during deployment.
+### 4. Production Deployment & Architecture Notes
+- **Deployment Topology**:
+  - **Preferred (Same-Site Reverse Proxy)**: Serve the frontend SPA and backend API under the same site origin (e.g., frontend at `https://cinetrack.example.com` and API at `https://cinetrack.example.com/api`). Configure Nginx, Caddy, Cloudflare, or AWS ALB to proxy `/api` requests to Express. This provides maximum cookie compatibility (`SameSite=lax`), avoids third-party cookie restrictions, and streamlines CSRF defense.
+  - **Separate Frontend & API Domains**: If frontend and backend are hosted on different domains (e.g. `https://app.cinetrack.com` and `https://api.cinetrack.com`), ensure both domains use HTTPS, set `COOKIE_DOMAIN=".cinetrack.com"`, configure `CORS_ORIGIN="https://app.cinetrack.com"`, and set `COOKIE_SAMESITE="none"` (requires `Secure=true`).
+- **Reverse Proxy IP Attribution**: Set `TRUST_PROXY="1"` (or appropriate hop count) in the backend environment so `req.ip` correctly resolves client IPs for rate-limiting.
+- **SSL / HTTPS**: Production must use HTTPS so cookies are transmitted securely with `Secure=true`.
+- **Database Deployment Sequence**:
+  1. Run preflight diagnostics: `npm --prefix server run prisma:preflight`
+  2. Deploy versioned migrations: `npm --prefix server run prisma:deploy`
+  3. Start Node.js service: `NODE_ENV=production npm start`
+- **PostgreSQL Connection**: In production, supply a managed PostgreSQL URL (e.g., Supabase, Neon, AWS RDS, Cloud SQL) in `DATABASE_URL` and run `npm --prefix server run prisma:deploy` during deployment.

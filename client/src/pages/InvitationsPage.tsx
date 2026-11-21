@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, X, Film, FolderKanban, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Bell, Check, X, Film, FolderKanban, Loader2, CheckCircle2 } from 'lucide-react';
 import { collaborationService } from '../services/collaborationService';
 import { Link } from 'react-router-dom';
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Film, Heart } from 'lucide-react';
+import { Film } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (

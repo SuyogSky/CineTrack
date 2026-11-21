@@ -6,6 +6,9 @@ import { env, extractDatabaseName, sanitizeDatabaseUrl } from './env';
 export { extractDatabaseName, sanitizeDatabaseUrl };
 
 function getConnectionString(): string {
+  if (process.env.TARGET_DATABASE_URL) {
+    return process.env.TARGET_DATABASE_URL;
+  }
   if (env.NODE_ENV === 'test') {
     if (!env.TEST_DATABASE_URL) {
       throw new Error(

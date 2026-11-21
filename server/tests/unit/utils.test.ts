@@ -35,25 +35,31 @@ describe('Unit Tests: Authentication & Password Utilities', () => {
     expect(isInvalid).toBe(false);
   });
 
-  it('should generate and verify JWT access and refresh tokens', () => {
+  it('should generate and verify JWT access and refresh tokens with mandatory sessionId', () => {
     const payload = {
       id: 'uuid-1234-5678',
       username: 'cinephile',
       email: 'cinephile@example.com',
     };
+    const validSessionId = '12345678-1234-4234-8234-123456789abc';
 
-    const token = generateAccessToken(payload);
+    const token = generateAccessToken(payload, validSessionId);
     expect(typeof token).toBe('string');
 
     const decoded = verifyAccessToken(token);
     expect(decoded).not.toBeNull();
     expect(decoded?.id).toBe(payload.id);
     expect(decoded?.username).toBe(payload.username);
+    expect(decoded?.sessionId).toBe(validSessionId);
 
-    const refreshToken = generateRefreshToken(payload, 'session-abc-123');
+    // Rejects missing or invalid sessionId
+    expect(() => generateAccessToken(payload, '' as any)).toThrow(/Invalid or missing sessionId/);
+    expect(() => generateAccessToken(payload, 'not-a-uuid' as any)).toThrow(/Invalid or missing sessionId/);
+
+    const refreshToken = generateRefreshToken(payload, validSessionId);
     const decodedRefresh = verifyRefreshToken(refreshToken);
     expect(decodedRefresh).not.toBeNull();
-    expect(decodedRefresh?.sessionId).toBe('session-abc-123');
+    expect(decodedRefresh?.sessionId).toBe(validSessionId);
   });
 
   it('should hash session tokens deterministically with SHA-256', () => {

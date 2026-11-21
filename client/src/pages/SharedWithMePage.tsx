@@ -1,6 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Users, Loader2, Sparkles, FolderKanban } from 'lucide-react';
+import { Users, Loader2, Sparkles } from 'lucide-react';
 import { collectionService } from '../services/collectionService';
 import { CollectionCard } from '../components/collections/CollectionCard';
 import { Link } from 'react-router-dom';

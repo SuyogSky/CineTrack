@@ -4,14 +4,23 @@ import { env } from '../config/env';
 import { AuthUserPayload } from '../types';
 
 export interface TokenPayload extends AuthUserPayload {
-  sessionId?: string;
+  sessionId: string;
 }
 
-export function generateAccessToken(payload: AuthUserPayload, sessionId?: string): string {
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isValidSessionId(sessionId: unknown): sessionId is string {
+  return typeof sessionId === 'string' && UUID_REGEX.test(sessionId);
+}
+
+export function generateAccessToken(payload: AuthUserPayload, sessionId: string): string {
+  if (!sessionId || !isValidSessionId(sessionId)) {
+    throw new Error('Invalid or missing sessionId: sessionId must be a valid UUID');
+  }
   return jwt.sign(
     {
       ...payload,
-      ...(sessionId ? { sessionId } : {}),
+      sessionId,
     },
     env.JWT_ACCESS_SECRET,
     {
@@ -36,7 +45,17 @@ export function generateRefreshToken(payload: AuthUserPayload, sessionId: string
 
 export function verifyAccessToken(token: string): TokenPayload | null {
   try {
-    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as TokenPayload;
+    const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as any;
+    if (
+      !decoded ||
+      typeof decoded !== 'object' ||
+      typeof decoded.id !== 'string' ||
+      typeof decoded.username !== 'string' ||
+      typeof decoded.email !== 'string' ||
+      !isValidSessionId(decoded.sessionId)
+    ) {
+      return null;
+    }
     return {
       id: decoded.id,
       username: decoded.username,

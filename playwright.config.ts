@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-const reuseServer = process.env.PLAYWRIGHT_REUSE_SERVER === 'true';
+const reuseServer = process.env.PLAYWRIGHT_REUSE_SERVER === 'true' || !process.env.CI;
 
 export default defineConfig({
   testDir: './e2e',

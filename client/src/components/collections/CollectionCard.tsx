@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FolderKanban, Users, Globe, Lock, Film, CheckCircle2 } from 'lucide-react';
+import { FolderKanban, Users, Globe, Lock, Film } from 'lucide-react';
 import { Collection } from '../../types';
 import { Badge } from '../common/Badge';
 

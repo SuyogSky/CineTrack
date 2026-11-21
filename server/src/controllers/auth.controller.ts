@@ -10,19 +10,36 @@ import {
   verifySignedCsrfToken,
 } from '../middleware/csrf.middleware';
 
+export function getAuthCookieOptions(maxAge?: number) {
+  const isProd = env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: env.COOKIE_SAMESITE,
+    domain: env.COOKIE_DOMAIN || undefined,
+    path: '/',
+    ...(maxAge !== undefined ? { maxAge } : {}),
+  };
+}
+
+export function getCsrfCookieOptions(maxAge: number = 7 * 24 * 60 * 60 * 1000) {
+  const isProd = env.NODE_ENV === 'production';
+  return {
+    httpOnly: false,
+    secure: isProd,
+    sameSite: env.COOKIE_SAMESITE,
+    domain: env.COOKIE_DOMAIN || undefined,
+    path: '/',
+    maxAge,
+  };
+}
+
 export class AuthController {
   static async getCsrfToken(req: Request, res: Response) {
     let token = req.cookies?.[CSRF_COOKIE_NAME];
     if (!token || !verifySignedCsrfToken(token)) {
       token = generateSignedCsrfToken();
-      res.cookie(CSRF_COOKIE_NAME, token, {
-        httpOnly: false,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-        path: '/',
-      });
+      res.cookie(CSRF_COOKIE_NAME, token, getCsrfCookieOptions());
     }
     sendSuccess(res, { csrfToken: token }, 'CSRF token retrieved');
   }
@@ -35,21 +52,8 @@ export class AuthController {
       const result = await AuthService.register(input, userAgent, ipAddress);
 
       // Set cookies
-      res.cookie('access_token', result.accessToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-        maxAge: 15 * 60 * 1000, // 15 mins
-      });
-
-      res.cookie('refresh_token', result.refreshToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      res.cookie('access_token', result.accessToken, getAuthCookieOptions(15 * 60 * 1000));
+      res.cookie('refresh_token', result.refreshToken, getAuthCookieOptions(7 * 24 * 60 * 60 * 1000));
 
       sendSuccess(
         res,
@@ -70,21 +74,8 @@ export class AuthController {
 
       const result = await AuthService.login(input, userAgent, ipAddress);
 
-      res.cookie('access_token', result.accessToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-        maxAge: 15 * 60 * 1000,
-      });
-
-      res.cookie('refresh_token', result.refreshToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('access_token', result.accessToken, getAuthCookieOptions(15 * 60 * 1000));
+      res.cookie('refresh_token', result.refreshToken, getAuthCookieOptions(7 * 24 * 60 * 60 * 1000));
 
       sendSuccess(res, { user: result.user }, 'Logged in successfully');
     } catch (error) {
@@ -114,22 +105,10 @@ export class AuthController {
         ipAddress
       );
 
-      res.cookie('access_token', result.accessToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-        maxAge: 15 * 60 * 1000,
-      });
+      res.cookie('access_token', result.accessToken, getAuthCookieOptions(15 * 60 * 1000));
 
       if (result.refreshToken) {
-        res.cookie('refresh_token', result.refreshToken, {
-          httpOnly: true,
-          secure: env.NODE_ENV === 'production',
-          sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-          domain: env.COOKIE_DOMAIN || undefined,
-          maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        res.cookie('refresh_token', result.refreshToken, getAuthCookieOptions(7 * 24 * 60 * 60 * 1000));
       }
 
       sendSuccess(
@@ -145,6 +124,12 @@ export class AuthController {
   }
 
   static async logout(req: Request, res: Response, next: NextFunction) {
+    const clearAuthCookies = () => {
+      const cookieOptions = getAuthCookieOptions();
+      res.clearCookie('access_token', cookieOptions);
+      res.clearCookie('refresh_token', cookieOptions);
+    };
+
     try {
       const refreshToken = req.cookies?.refresh_token;
       const accessToken =
@@ -152,24 +137,14 @@ export class AuthController {
         (req.headers.authorization?.startsWith('Bearer ')
           ? req.headers.authorization.split(' ')[1]
           : undefined);
+
       await AuthService.logout(refreshToken, accessToken);
-
-      res.clearCookie('access_token', {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-      });
-
-      res.clearCookie('refresh_token', {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
-        domain: env.COOKIE_DOMAIN || undefined,
-      });
-
+      clearAuthCookies();
       sendSuccess(res, null, 'Logged out successfully');
     } catch (error) {
+      // Clear client-side authentication cookies to prevent stale auth state,
+      // but propagate database failure so server-side revocation failure is never falsely reported as success.
+      clearAuthCookies();
       next(error);
     }
   }

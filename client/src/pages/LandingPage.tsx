@@ -7,7 +7,6 @@ import {
   Globe,
   BookmarkCheck,
   ArrowRight,
-  ShieldCheck,
   Star,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
