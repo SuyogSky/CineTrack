@@ -327,6 +327,31 @@ export class TmdbService {
     };
   }
 
+  private static hasApiKey(): boolean {
+    return Boolean(env.TMDB_API_KEY || env.TMDB_READ_ACCESS_TOKEN);
+  }
+
+  private static getRequestConfig(extraParams: Record<string, unknown> = {}) {
+    const rawToken = env.TMDB_READ_ACCESS_TOKEN || env.TMDB_API_KEY;
+    const isV4Bearer = Boolean(
+      env.TMDB_READ_ACCESS_TOKEN ||
+      (env.TMDB_API_KEY && (env.TMDB_API_KEY.startsWith('eyJ') || env.TMDB_API_KEY.length > 50))
+    );
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+    };
+    const params: Record<string, unknown> = { ...extraParams };
+
+    if (isV4Bearer) {
+      headers['Authorization'] = `Bearer ${rawToken}`;
+    } else if (rawToken) {
+      params['api_key'] = rawToken;
+    }
+
+    return { headers, params, timeout: 7000 };
+  }
+
   static async search(
     query: string,
     type: 'all' | 'movie' | 'tv' = 'all',
@@ -341,8 +366,8 @@ export class TmdbService {
     const cached = getFromCache<PaginatedResult<NormalizedMovie>>(cacheKey);
     if (cached) return cached;
 
-    // Offline / fallback when no API key is provided
-    if (!env.TMDB_API_KEY) {
+    // Offline / fallback when no API key or token is provided
+    if (!this.hasApiKey()) {
       if (env.NODE_ENV === 'production') {
         throw new ServiceUnavailableError('TMDb service is unconfigured in production');
       }
@@ -377,15 +402,13 @@ export class TmdbService {
       if (type === 'movie') endpoint = '/search/movie';
       if (type === 'tv') endpoint = '/search/tv';
 
-      const response = await axios.get(`${env.TMDB_BASE_URL}${endpoint}`, {
-        params: {
-          api_key: env.TMDB_API_KEY,
-          query: trimmed,
-          page,
-          include_adult: false,
-        },
-        timeout: 7000,
+      const config = this.getRequestConfig({
+        query: trimmed,
+        page,
+        include_adult: false,
       });
+
+      const response = await axios.get(`${env.TMDB_BASE_URL}${endpoint}`, config);
 
       const data = response.data;
       const rawResults: TmdbSearchItemResult[] = data.results || [];
@@ -470,7 +493,7 @@ export class TmdbService {
       (m) => m.tmdbId === tmdbId && m.mediaType === mediaType
     );
 
-    if (!env.TMDB_API_KEY) {
+    if (!this.hasApiKey()) {
       if (env.NODE_ENV === 'production') {
         throw new ServiceUnavailableError('TMDb service is unconfigured in production');
       }
@@ -483,12 +506,8 @@ export class TmdbService {
 
     try {
       const endpoint = mediaType === 'tv' ? `/tv/${tmdbId}` : `/movie/${tmdbId}`;
-      const response = await axios.get(`${env.TMDB_BASE_URL}${endpoint}`, {
-        params: {
-          api_key: env.TMDB_API_KEY,
-        },
-        timeout: 7000,
-      });
+      const config = this.getRequestConfig();
+      const response = await axios.get(`${env.TMDB_BASE_URL}${endpoint}`, config);
 
       const normalized = this.normalizeDetails(response.data, mediaType);
       setToCache(cacheKey, normalized);

@@ -399,7 +399,11 @@ export const envSchema = z
     COOKIE_DOMAIN: z.string().optional().default(''),
     COOKIE_SAMESITE: z.enum(['lax', 'none', 'strict']).default('lax'),
     TMDB_API_KEY: z.string().optional().default(''),
+    TMDB_READ_ACCESS_TOKEN: z.string().optional().default(''),
     TMDB_BASE_URL: z.string().default('https://api.themoviedb.org/3'),
+    BACKUP_ENCRYPTION_PASSPHRASE: z.string().optional(),
+    BACKUP_VERIFY_RESTORE: z.string().optional(),
+    ALLOW_DEMO_SEED: z.string().optional(),
   })
   .transform((data) => {
     // Reconcile CORS_ORIGIN and ALLOWED_ORIGINS into a canonical CORS_ORIGIN string

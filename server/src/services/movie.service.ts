@@ -34,45 +34,76 @@ export class MovieService {
           `${mediaType === 'tv' ? 'TV Series' : 'Movie'} with TMDb ID ${tmdbId} not found`
         );
       }
+      try {
+        movie = await prisma.movie.create({
+          data: {
+            tmdbId: match.tmdbId,
+            mediaType: prismaMediaType,
+            title: match.title,
+            originalTitle: match.originalTitle,
+            overview: match.overview,
+            posterPath: match.posterPath,
+            backdropPath: match.backdropPath,
+            releaseDate: match.releaseDate,
+            releaseYear: match.releaseYear,
+            originalLanguage: match.originalLanguage,
+            popularity: match.popularity,
+            voteAverage: match.voteAverage,
+            genres: match.genres,
+          },
+        });
+        return movie;
+      } catch (err: unknown) {
+        const error = err as { code?: string };
+        if (error?.code === 'P2002') {
+          const existing = await prisma.movie.findUnique({
+            where: {
+              tmdbId_mediaType: {
+                tmdbId,
+                mediaType: prismaMediaType,
+              },
+            },
+          });
+          if (existing) return existing;
+        }
+        throw err;
+      }
+    }
+
+    try {
       movie = await prisma.movie.create({
         data: {
-          tmdbId: match.tmdbId,
+          tmdbId: metadata.tmdbId,
           mediaType: prismaMediaType,
-          title: match.title,
-          originalTitle: match.originalTitle,
-          overview: match.overview,
-          posterPath: match.posterPath,
-          backdropPath: match.backdropPath,
-          releaseDate: match.releaseDate,
-          releaseYear: match.releaseYear,
-          originalLanguage: match.originalLanguage,
-          popularity: match.popularity,
-          voteAverage: match.voteAverage,
-          genres: match.genres,
+          title: metadata.title,
+          originalTitle: metadata.originalTitle,
+          overview: metadata.overview,
+          posterPath: metadata.posterPath,
+          backdropPath: metadata.backdropPath,
+          releaseDate: metadata.releaseDate,
+          releaseYear: metadata.releaseYear,
+          originalLanguage: metadata.originalLanguage,
+          popularity: metadata.popularity,
+          voteAverage: metadata.voteAverage,
+          genres: metadata.genres,
         },
       });
       return movie;
+    } catch (err: unknown) {
+      const error = err as { code?: string };
+      if (error?.code === 'P2002') {
+        const existing = await prisma.movie.findUnique({
+          where: {
+            tmdbId_mediaType: {
+              tmdbId,
+              mediaType: prismaMediaType,
+            },
+          },
+        });
+        if (existing) return existing;
+      }
+      throw err;
     }
-
-    movie = await prisma.movie.create({
-      data: {
-        tmdbId: metadata.tmdbId,
-        mediaType: prismaMediaType,
-        title: metadata.title,
-        originalTitle: metadata.originalTitle,
-        overview: metadata.overview,
-        posterPath: metadata.posterPath,
-        backdropPath: metadata.backdropPath,
-        releaseDate: metadata.releaseDate,
-        releaseYear: metadata.releaseYear,
-        originalLanguage: metadata.originalLanguage,
-        popularity: metadata.popularity,
-        voteAverage: metadata.voteAverage,
-        genres: metadata.genres,
-      },
-    });
-
-    return movie;
   }
 
   static async getMovieById(id: string) {

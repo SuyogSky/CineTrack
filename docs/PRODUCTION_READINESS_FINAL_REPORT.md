@@ -51,7 +51,7 @@ All verifications were conducted directly against live PostgreSQL instances usin
 
 ### 3.2 Cookie Policy & CSRF Defense
 - **Authentication Cookies**: Both `access_token` and `refresh_token` are configured with `httpOnly: true`, `secure: true` in production, `path: '/'`, and `sameSite: env.COOKIE_SAMESITE` (defaulting to `'lax'`).
-- **CSRF Protection**: Double-submit cookie pattern using HMAC-SHA256 signed tokens (`CSRF_SECRET`). State-changing methods (`POST`, `PATCH`, `DELETE`, `PUT`) require matching `x-csrf-token` header and `csrf_token` cookie. Public endpoints (`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`) validate CSRF before processing requests.
+- **CSRF Protection**: Double-submit cookie pattern using HMAC-SHA256 signed tokens (`CSRF_SECRET`). State-changing methods (`POST`, `PATCH`, `DELETE`, `PUT`) require matching `x-csrf-token` header and `XSRF-TOKEN` cookie. Public endpoints (`/api/auth/register`, `/api/auth/login`, `/api/auth/refresh`) validate CSRF before processing requests.
 
 ### 3.3 CORS & Origin Hardening
 - **Strict Allowlisting**: Reconciles `CORS_ORIGIN` and `ALLOWED_ORIGINS`. In production mode:
@@ -95,9 +95,14 @@ The automated backup and restore test suite (`server/scripts/test_backup_restore
 
 | Test Domain | Executed Command | Total Suites | Total Tests | Passed | Failed | Skipped | Pass Rate |
 |---|---|---|---|---|---|---|---|
-| **Server Unit & Integration** | `npm --prefix server run test` | 22 | 164 | 164 | 0 | 0 | **100%** |
-| **Migration Preflight States** | `npm --prefix server run test -- migration-preflight-states` | 1 | 22 | 22 | 0 | 0 | **100%** |
-| **Backup & Restore Safety** | `npm --prefix server run test -- backup-restore` | 1 | 11 | 11 | 0 | 0 | **100%** |
+| **Server Unit & Integration (All)** | `npm --prefix server run test` | 28 | 300 | 300 | 0 | 0 | **100%** |
+| **Migration Preflight States** | `npm --prefix server run test -- migration-preflight-states` | 1 | 50 | 50 | 0 | 0 | **100%** |
+| **Backup Production & Retention** | `npm --prefix server run test -- backup-production` | 1 | 20 | 20 | 0 | 0 | **100%** |
+| **Backup Authenticated Crypto** | `npm --prefix server run test -- backup-crypto` | 1 | 23 | 23 | 0 | 0 | **100%** |
+| **Database Seed Safety** | `npm --prefix server run test -- seed-safety` | 1 | 18 | 18 | 0 | 0 | **100%** |
+| **Backup Structural Restore** | `npm --prefix server run test -- backup-restore-structural` | 1 | 2 | 2 | 0 | 0 | **100%** |
+| **Backup Snapshot Consistency** | `npm --prefix server run test -- backup-snapshot-consistency` | 1 | 1 | 1 | 0 | 0 | **100%** |
+| **Backup & Restore Safety** | `npm --prefix server run test -- backup-restore` | 1 | 37 | 37 | 0 | 0 | **100%** |
 | **Logout & Revocation** | `npm --prefix server run test -- logout-reliability` | 1 | 7 | 7 | 0 | 0 | **100%** |
 | **Client ESLint** | `npm --prefix client run lint` | 1 | N/A | Clean (0 errors) | 0 | 0 | **100%** |
 | **Server TypeScript** | `npm --prefix server run typecheck` | 1 | N/A | Clean (0 errors) | 0 | 0 | **100%** |
@@ -106,6 +111,7 @@ The automated backup and restore test suite (`server/scripts/test_backup_restore
 | **Client Production Build** | `npm --prefix client run build` | 1 | N/A | Clean (0 warnings) | 0 | 0 | **100%** |
 | **Playwright Browser E2E** | `npx playwright test` | 6 | 9 | 9 | 0 | 0 | **100%** |
 | **Live Backup Verification** | `npm --prefix server run db:test-backup` | 1 | N/A | Verified live | 0 | 0 | **100%** |
+| **Operational Backup Validation** | `npm --prefix server run backup:validate` | 1 | N/A | Verified live | 0 | 0 | **100%** |
 | **Live Preflight Verification** | `npm --prefix server run prisma:preflight` | 1 | N/A | Verified live | 0 | 0 | **100%** |
 
 ---
@@ -116,12 +122,12 @@ The automated backup and restore test suite (`server/scripts/test_backup_restore
 - **Can I create real accounts and log in reliably?** Yes. Passwords use Argon2id, auth uniqueness is case-insensitive, sessions are validated against PostgreSQL on every request, and logout reliably revokes sessions.
 - **Can I use it personally every day?** Yes. Personal watchlists, custom collections, TV and movie cataloging, and aggregate statistics are fully functional and persistent.
 - **Can I share collections with friends and family?** Yes. Both private collaboration (with granular roles) and public unguessable view-only link sharing (with personal notes masked) are fully verified.
-- **Can I rely on its backup and disaster recovery process?** Yes. Full backup creation, restoration, catalog equivalence, and deterministic data checksum verification have been validated against live PostgreSQL instances.
+- **Can I rely on its backup and disaster recovery process?** Yes. Full backup creation, coordinated transaction snapshot export (`SELECT pg_export_snapshot()`), authenticated AES-256-GCM encryption, automatic restorability verification (all 8 tables, 10 foreign keys with cascade and zero orphans, check constraints, unique indexes), and `--validate` operational health checks are completely production-ready.
 
 ---
 
 ## 7. Deliverable Distribution Archive
 
-- **Archive File**: `CineTrack-Production-Ready-Final.zip`
+- **Archive File**: `CineTrack-Final-Reliability-Fixed.zip`
 - **Integrity**: 100% POSIX forward slashes (`/`), 0 backslashes, 0 `.env` files, 0 secrets, 0 nested archives.
 - **Extraction**: Clean extraction verified with all active application files intact.

@@ -108,13 +108,20 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Seed Database for E2E
+        env:
+          NODE_ENV: development
+          DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public
+          TEST_DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public
+          EXPECTED_TEST_DATABASE_NAME: cinetrack_e2e
         run: |
-          DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public" npm --prefix server run prisma:seed
+          npm --prefix server run prisma:seed
 
       - name: Run Playwright E2E Tests
         env:
           NODE_ENV: development
           DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public
+          TEST_DATABASE_URL: postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_e2e?schema=public
+          EXPECTED_TEST_DATABASE_NAME: cinetrack_e2e
         run: |
           npx playwright test
 

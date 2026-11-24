@@ -21,6 +21,7 @@ CineTrack allows film enthusiasts to discover movies through TMDb, manage person
 11. [API Reference & Authorization Rules](#11-api-reference--authorization-rules)
 12. [Backup, Restore, and Disaster Recovery Procedures](#12-backup-restore-and-disaster-recovery-procedures)
 13. [Production Build & Deployment](#13-production-build--deployment)
+14. [Architecture & Production Documentation](#14-architecture--production-documentation)
 
 ---
 
@@ -313,7 +314,7 @@ In production (`NODE_ENV=production`), the application enforces strict startup v
 5. **Cookie Security & SameSite Policy**:
    - **Authentication Cookies (`access_token`, `refresh_token`)**: Always `HttpOnly=true` (inaccessible to JavaScript), `path='/'`, with `Secure=true` in production.
    - **SameSite Configuration (`COOKIE_SAMESITE`)**: Defaults to `lax` (strongly recommended for same-domain or reverse-proxy architectures such as `https://cinetrack.example.com` and `https://cinetrack.example.com/api`). When deploying across separate origins (e.g. `https://cinetrack.vercel.app` and `https://api.railway.app`), set `COOKIE_SAMESITE=none` (strictly requires HTTPS and `Secure=true`).
-   - **CSRF Token Cookie (`csrf_token`)**: Intentionally uses `HttpOnly=false` for the double-submit cookie pattern so frontend JavaScript can read the token and transmit it via the `x-csrf-token` HTTP header on state-changing requests (`POST`, `PATCH`, `DELETE`). The cookie is HMAC-signed on the server using `CSRF_SECRET` to prevent tampering.
+   - **CSRF Token Cookie (`XSRF-TOKEN`)**: Intentionally uses `HttpOnly=false` for the double-submit cookie pattern so frontend JavaScript can read the token and transmit it via the `x-csrf-token` HTTP header on state-changing requests (`POST`, `PATCH`, `DELETE`). The cookie is HMAC-signed on the server using `CSRF_SECRET` to prevent tampering.
 6. **TMDb Integration**: If `TMDB_API_KEY` is omitted, CineTrack operates seamlessly using its curated local offline catalog. Supplying a valid TMDb v3 API key enables real-time search proxies.
 
 ---
@@ -376,7 +377,7 @@ CineTrack includes an automated test pyramid with **100% test pass rates**:
 ```bash
 npm run test:server
 ```
-Runs **164 test cases across 22 test files** covering:
+Runs **300 test cases across 28 test suites** covering:
 - Argon2id password hashing and JWT token verification
 - Zod validation schemas
 - User registration, login, session revocation
@@ -390,13 +391,20 @@ Runs **164 test cases across 22 test files** covering:
 - **TMDb Movie & TV Series**: Filtered search (`all`, `movie`, `tv`), collision prevention for identical numeric IDs, TV series lifecycle
 - **Case-Insensitive Auth Uniqueness**: Normalization of email and username, rejection of case-variant duplicates
 - **Default Watchlist Constraints**: Partial unique index enforcing strictly one default watchlist per user
+- **Watched Status Consistency**: PostgreSQL CHECK constraint ensuring watched items strictly possess watchedAt timestamps and unwatched items strictly have null watchedAt
 - **Public Collection Privacy**: Masking of private personal notes on public share links
 - **CSRF Token Verification**: Dedicated HMAC signing secret and invalid token rejection
 - **Cookie-Only Refresh Tokens**: Rejection of body/bearer tokens on refresh; immediate session revocation on logout
 - **Mandatory Session Validation**: Access tokens strictly require valid `sessionId`; middleware validates active database session on every authenticated request; fails closed on database lookup errors
-- **Migration Preflight States**: Real PostgreSQL integration tests covering all 16 states (Empty, Valid, Missing tables, Missing columns, Inconsistent migrations, Failed migrations, Duplicates, and Orphaned records)
+- **Database Connection Safety & Isolation**: Rejection of TARGET_DATABASE_URL override in application code, strict TEST_DATABASE_URL requirement in test mode, rejection of production databases in test mode and test databases in production mode, and server identity verification
+- **Migration Preflight 4-State Machine (50 tests)**: Real PostgreSQL integration tests covering all states (Empty, Valid, Missing tables, Missing columns, Column data type mismatches, Inconsistent migrations, Checksum mismatches, Missing FK/CHECK/unique constraints, Exact index column names & ordering, Missing enums, Unexpected enum values, Duplicates, and Orphaned records)
 - **Distinct Production Secrets**: Rejection of shared, weak, placeholder, or identical secrets
 - **Hardened CORS Validation**: Rejection of HTTP, localhost, loopbacks, private IPv4/IPv6, and malformed origins in production
+- **Authenticated Backup Encryption (23 tests)**: Authenticated AES-256-GCM + PBKDF2 (100k rounds), atomic no-clobber staging via hardlink `fs.linkSync`, corrupt header rejection, bit-flip detection, strict no-overwrite enforcement
+- **Production Backup Orchestration (20 tests)**: Automated retention policy, collision-resistant naming, Last-Known-Good preservation, Minimum Keep guarantee, and `--validate` operational environment health verification
+- **Coordinated Snapshot Consistency**: Single PostgreSQL exported transaction snapshot (`SELECT pg_export_snapshot()`) coordinated with `pg_dump --snapshot`, eliminating phantom hash mismatches under concurrent writes
+- **Full Database Structure Verification**: Deep validation of all 8 tables, columns, 10 foreign keys with cascade and zero orphans, unique indexes, and canonical status check constraints
+- **Database Seeding Safety (18 tests)**: `assertSeedAllowed` with live socket identity (`inet_server_addr`, `inet_server_port`), rejection of non-local hosts, production databases, and populated databases
 - **Backup & Restore Integration**: Positive and negative backup tests, corrupt dump rejection, collision safety, and guaranteed cleanup
 
 ### 2. Browser E2E Tests (Playwright)
@@ -496,33 +504,36 @@ All API routes are prefixed with `/api`.
 
 ## 12. Backup, Restore, and Disaster Recovery Procedures
 
-### 1. Database Backup (PostgreSQL)
-Run `pg_dump` to create a binary custom-format backup of the CineTrack production database:
+### 1. Production Backup Creation & Verification
+Run the production backup pipeline to export a coordinated PostgreSQL snapshot, encrypt with authenticated AES-256-GCM, and automatically verify restorability:
 ```bash
-pg_dump -U cinetrack -h localhost -p 5432 -F c -b -v -f cinetrack_backup_$(date +%Y%m%d_%H%M%S).dump cinetrack
+npm --prefix server run backup:create
 ```
 
-### 2. Database Restoration
-To restore a snapshot into a new or existing target database:
+### 2. Operational Environment Health Check (`--validate`)
+Verify that the backup directory is writable (`0700`), the database connection and live server identity support exported snapshots, and native PostgreSQL tools (`pg_dump` and `pg_restore` v18+) are operational:
 ```bash
-# 1. Ensure target database exists
-createdb -U cinetrack -h localhost -p 5432 cinetrack
+npm --prefix server run backup:validate
+```
 
-# 2. Restore schema and data
-pg_restore -U cinetrack -h localhost -p 5432 -d cinetrack -v cinetrack_backup_YYYYMMDD_HHMMSS.dump
+### 3. Database Restoration
+To restore an encrypted snapshot into a target database with cryptographic validation and database safeguards:
+```bash
+npm --prefix server run backup:restore -- --backup=./backups/cinetrack_YYYYMMDD_HHMMSS_xxxx.dump.enc --target-db="postgresql://cinetrack_user:pass@localhost:5432/cinetrack_recovery" --confirm-target-db="cinetrack_recovery"
+```
 
 # 3. Apply any subsequent pending migrations
 npm --prefix server run prisma:deploy
 ```
 
-### 3. Automated Backup & Restore Verification
-To verify the backup and restore procedures non-destructively:
+### 4. Non-Destructive Backup & Restore Verification Suite
+To verify the backup and restore procedures non-destructively against an isolated test database:
 ```bash
 npm --prefix server run db:test-backup
 ```
 
-### 4. Permanent Production Seeding Safeguard
-The database seed script (`server/prisma/seed.ts`) is strictly disabled in production environments (`NODE_ENV === 'production'`). No environment variable bypass or override exists, eliminating any possibility of accidental test data overwrites in live production.
+### 5. Multi-Tenant Seed Safety & Host Guard
+The database seed script (`server/prisma/seed.ts`) executes strict live host verification (`inet_server_addr`, `inet_server_port`) against `DEFAULT_ALLOWED_SEED_HOSTS` (`['localhost', '127.0.0.1', '::1']`). Seeding is strictly forbidden on production databases (`cinetrack`, `prod`, `production`), requires `ALLOW_DEMO_SEED=true`, and refuses to seed if existing non-demo user data is present.
 
 ---
 
@@ -559,3 +570,16 @@ This generates `CineTrack-Production-Ready-Final.zip` using strict POSIX forward
   2. Deploy versioned migrations: `npm --prefix server run prisma:deploy`
   3. Start Node.js service: `NODE_ENV=production npm start`
 - **PostgreSQL Connection**: In production, supply a managed PostgreSQL URL (e.g., Supabase, Neon, AWS RDS, Cloud SQL) in `DATABASE_URL` and run `npm --prefix server run prisma:deploy` during deployment.
+
+---
+
+## 14. Architecture & Production Documentation
+
+Complete engineering, operations, and audit documentation is available under `docs/`:
+
+1. **[Production Readiness Audit](docs/PRODUCTION_READINESS_AUDIT.md)**: Matrix of all 16 audit items, fixes, exact verified test counts, and security review.
+2. **[Production Deployment Guide](docs/PRODUCTION_DEPLOYMENT_GUIDE.md)**: Deployment topologies, secret generation, Nginx reverse proxy, cookie policies, split-origin setups, and health checks.
+3. **[Database Backup & Recovery Runbook](docs/DATABASE_BACKUP_AND_RECOVERY.md)**: Native `pg_dump` strategies, encrypted offsite storage, automated verification, and disaster recovery procedures.
+4. **[Data Integrity & Migration Strategy](docs/DATA_INTEGRITY_AND_MIGRATION.md)**: PostgreSQL source of truth principles, functional uniqueness indexes, partial indexes, and migration preflight diagnostics.
+5. **[Automated Testing Guide](docs/TESTING.md)**: Vitest unit & integration test suites, Playwright E2E workflows, failure injection, and test execution matrix.
+6. **[Application Security Architecture](docs/SECURITY.md)**: Argon2id hashing, token family rotation, double-submit CSRF cookies, strict CORS allowlisting, and rate limiting.

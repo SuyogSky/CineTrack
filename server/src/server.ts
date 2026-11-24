@@ -2,6 +2,22 @@ import { app } from './app';
 import { env } from './config/env';
 import { disconnectDatabase, prisma } from './config/database';
 
+function validateNodeVersion() {
+  const version = process.versions.node;
+  const [major, minor] = version.split('.').map(Number);
+  const isValid =
+    (major === 20 && minor >= 19) ||
+    (major === 22 && minor >= 12) ||
+    (major >= 24);
+  if (!isValid) {
+    console.error(
+      `❌ Incompatible Node.js runtime version "${version}". CineTrack requires Node.js >=20.19.0, >=22.12.0, or >=24.0.0.`
+    );
+    process.exit(1);
+  }
+}
+validateNodeVersion();
+
 const server = app.listen(env.PORT, async () => {
   try {
     await prisma.$connect();

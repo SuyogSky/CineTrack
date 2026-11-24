@@ -1,0 +1,25 @@
+[Unit]
+Description=CineTrack Encrypted Database Backup Service
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=cinetrack
+Group=cinetrack
+WorkingDirectory=/var/www/cinetrack/server
+EnvironmentFile=/var/www/cinetrack/server/.env
+Environment=BACKUP_VERIFY_RESTORE=true
+ExecStart=/usr/bin/node /var/www/cinetrack/server/dist/scripts/backup_production.js --verify-restore
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cinetrack-backup
+
+# Hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

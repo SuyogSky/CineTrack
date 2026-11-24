@@ -44,20 +44,28 @@ export class CollectionMovieService {
     }
 
     // 3. Create entry
-    return prisma.collectionMovie.create({
-      data: {
-        collectionId,
-        movieId: movie.id,
-        addedBy: userId,
-        status: 'TO_WATCH',
-        watchedAt: null,
-        note: input.note || null,
-      },
-      include: {
-        movie: true,
-        adder: { select: { id: true, username: true } },
-      },
-    });
+    try {
+      return await prisma.collectionMovie.create({
+        data: {
+          collectionId,
+          movieId: movie.id,
+          addedBy: userId,
+          status: 'TO_WATCH',
+          watchedAt: null,
+          note: input.note || null,
+        },
+        include: {
+          movie: true,
+          adder: { select: { id: true, username: true } },
+        },
+      });
+    } catch (err: unknown) {
+      const error = err as { code?: string };
+      if (error?.code === 'P2002') {
+        throw new ConflictError('This movie is already in this collection');
+      }
+      throw err;
+    }
   }
 
   static async updateMovie(
@@ -176,20 +184,28 @@ export class CollectionMovieService {
         where: { id: entryId },
       });
 
-      return tx.collectionMovie.create({
-        data: {
-          collectionId: destinationCollectionId,
-          movieId: entry.movieId,
-          addedBy: userId,
-          status: entry.status,
-          watchedAt: entry.watchedAt,
-          note: entry.note,
-        },
-        include: {
-          movie: true,
-          adder: { select: { id: true, username: true } },
-        },
-      });
+      try {
+        return await tx.collectionMovie.create({
+          data: {
+            collectionId: destinationCollectionId,
+            movieId: entry.movieId,
+            addedBy: userId,
+            status: entry.status,
+            watchedAt: entry.watchedAt,
+            note: entry.note,
+          },
+          include: {
+            movie: true,
+            adder: { select: { id: true, username: true } },
+          },
+        });
+      } catch (err: unknown) {
+        const error = err as { code?: string };
+        if (error?.code === 'P2002') {
+          throw new ConflictError('Movie already exists in the destination collection');
+        }
+        throw err;
+      }
     });
   }
 }

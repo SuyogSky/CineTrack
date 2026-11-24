@@ -86,4 +86,68 @@ describe('P0 Case-Insensitive Auth Uniqueness & Default Watchlist Integrity Test
       })
     ).rejects.toThrow();
   });
+
+  it('should enforce watched status and watchedAt timestamp consistency at the database level via CHECK constraint', async () => {
+    const regRes = await request(app).post('/api/auth/register').send(initialUser);
+    const userId = regRes.body.data.user.id;
+
+    const collection = await prisma.collection.findFirst({
+      where: { ownerId: userId, isDefaultWatchlist: true },
+    });
+    expect(collection).toBeDefined();
+
+    const movie = await prisma.movie.create({
+      data: {
+        tmdbId: 999999,
+        mediaType: 'MOVIE',
+        title: 'Check Constraint Test Movie',
+      },
+    });
+
+    // 1. Valid: TO_WATCH with watchedAt = null
+    const validToWatch = await prisma.collectionMovie.create({
+      data: {
+        collectionId: collection!.id,
+        movieId: movie.id,
+        addedBy: userId,
+        status: 'TO_WATCH',
+        watchedAt: null,
+      },
+    });
+    expect(validToWatch.status).toBe('TO_WATCH');
+    expect(validToWatch.watchedAt).toBeNull();
+
+    // 2. Invalid: Update to WATCHED while keeping watchedAt = null -> must be rejected by PostgreSQL CHECK constraint
+    await expect(
+      prisma.collectionMovie.update({
+        where: { id: validToWatch.id },
+        data: {
+          status: 'WATCHED',
+          watchedAt: null,
+        },
+      })
+    ).rejects.toThrow();
+
+    // 3. Valid: Update to WATCHED with non-null watchedAt
+    const validWatched = await prisma.collectionMovie.update({
+      where: { id: validToWatch.id },
+      data: {
+        status: 'WATCHED',
+        watchedAt: new Date(),
+      },
+    });
+    expect(validWatched.status).toBe('WATCHED');
+    expect(validWatched.watchedAt).not.toBeNull();
+
+    // 4. Invalid: Update to TO_WATCH with non-null watchedAt -> must be rejected by PostgreSQL CHECK constraint
+    await expect(
+      prisma.collectionMovie.update({
+        where: { id: validToWatch.id },
+        data: {
+          status: 'TO_WATCH',
+          watchedAt: new Date(),
+        },
+      })
+    ).rejects.toThrow();
+  });
 });

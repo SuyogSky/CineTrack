@@ -48,9 +48,9 @@ NODE_ENV=production
 DATABASE_URL="postgresql://cinetrack_app:SUPER_STRONG_DB_PASS@db.production.internal:5432/cinetrack?schema=public&sslmode=require"
 
 # Pairwise Distinct 32+ Character Secrets (Never reuse values across primitives)
-JWT_ACCESS_SECRET="7f8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b"
-JWT_REFRESH_SECRET="a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
-CSRF_SECRET="f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8"
+JWT_ACCESS_SECRET="<generate-distinct-32-char-secret-using-openssl-rand-hex-32>"
+JWT_REFRESH_SECRET="<generate-distinct-32-char-secret-using-openssl-rand-hex-32>"
+CSRF_SECRET="<generate-distinct-32-char-secret-using-openssl-rand-hex-32>"
 
 # Reverse Proxy Trust (Set to "1" or proxy hop count behind Cloudflare, Nginx, ALB)
 TRUST_PROXY="1"
@@ -64,10 +64,39 @@ ALLOWED_ORIGINS="https://cinetrack.example.com"
 COOKIE_SAMESITE="lax"
 COOKIE_DOMAIN=""
 
-# External TMDb API (Optional: omitted key triggers curated offline catalog)
+# External TMDb API (Provide v3 32-character key or v4 Bearer read access token)
 TMDB_API_KEY="your_production_tmdb_api_key_v3"
+TMDB_READ_ACCESS_TOKEN=""
 TMDB_BASE_URL="https://api.themoviedb.org/3"
 ```
+
+### Frontend Environment Configuration (`client/.env`)
+
+```env
+# Production Same-Origin Setup (Topology A - Recommended)
+# Leave VITE_API_URL empty so the browser issues relative requests (/api/...) through the same-origin reverse proxy:
+VITE_API_URL=
+
+# Split-Origin Setup (Topology B only - e.g. Vercel frontend + Railway backend)
+# VITE_API_URL="https://cinetrack-api.example.com/api"
+```
+
+### 2.1. Secret Rotation Runbook
+
+When rotating production secrets to adhere to organizational compliance or incident response:
+
+1. **Rotating `CSRF_SECRET`**:
+   - Generate a new 32-byte secret using `openssl rand -hex 32`.
+   - Update `CSRF_SECRET` in `server/.env`.
+   - Perform a rolling restart of backend instances. Active users receive updated tokens on their subsequent `GET /api/auth/csrf` request without requiring re-authentication.
+
+2. **Rotating `JWT_ACCESS_SECRET`**:
+   - Short lifespan (15 minutes). Updating `JWT_ACCESS_SECRET` temporarily invalidates active in-flight access tokens.
+   - CineTrack's automated Axios interceptor catches 401 responses and immediately executes `POST /api/auth/refresh` using the persistent refresh token session, reissuing new access tokens with zero interruption to active users.
+
+3. **Rotating `JWT_REFRESH_SECRET`**:
+   - Long lifespan (7 days). Rotating this secret will invalidate existing refresh tokens and prompt logged-in sessions to log in again upon their next session refresh.
+   - Notify users in advance or schedule during a designated maintenance window.
 
 ---
 
@@ -199,11 +228,11 @@ CineTrack implements a strict distinction between authentication cookies and CSR
 |---|---|---|---|---|---|
 | `access_token` | Path `/` | **`true`** | **`true`** | `lax` (or `none`) | Short-lived JWT (15 mins) for authenticating API requests. Inaccessible to client JavaScript. |
 | `refresh_token` | Path `/` | **`true`** | **`true`** | `lax` (or `none`) | Long-lived token (7 days) for rotating access tokens. Inaccessible to client JavaScript. |
-| `csrf_token` | Path `/` | **`false`** | **`true`** | `lax` (or `none`) | Double-submit CSRF cookie. JavaScript reads this value and transmits it in the `x-csrf-token` header. |
+| `XSRF-TOKEN` | Path `/` | **`false`** | **`true`** | `lax` (or `none`) | Double-submit CSRF cookie. JavaScript reads this value and transmits it in the `x-csrf-token` header. |
 
 ### How CSRF Double-Submit Protection Operates:
 1. When a client visits the application, it fetches `/api/auth/csrf`.
-2. The server sets an HMAC-SHA256 signed `csrf_token` cookie and returns the token in the response body.
+2. The server sets an HMAC-SHA256 signed `XSRF-TOKEN` cookie and returns the token in the response body.
 3. On every state-changing request (`POST`, `PATCH`, `DELETE`, `PUT`), the frontend Axios client attaches the header:
    ```http
    x-csrf-token: <token>
@@ -254,7 +283,7 @@ To verify the entire backup and restore toolchain without manual intervention:
 ```bash
 BACKUP_TEST_SOURCE_URL="postgresql://cinetrack:PASS@localhost:5432/cinetrack_test?schema=public" npm --prefix server run db:test-backup
 ```
-This script dumps the database, restores to a disposable database, verifies 8 tables, 73 columns, 68 constraints, 35 indexes, 12 enums, and deterministic MD5 row-level checksums, and guarantees teardown.
+This script dumps the database, restores to a disposable database, verifies 8 tables, 73 columns, 69 constraints, 35 indexes, 12 enums, and deterministic MD5 row-level checksums, and guarantees teardown.
 
 ---
 

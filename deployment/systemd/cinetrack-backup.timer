@@ -1,0 +1,14 @@
+[Unit]
+Description=CineTrack Daily Encrypted Database Backup Timer
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Timer]
+# Run daily at 03:00 UTC
+OnCalendar=*-*-* 03:00:00
+# Run 10 minutes after boot if machine was off at scheduled time
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

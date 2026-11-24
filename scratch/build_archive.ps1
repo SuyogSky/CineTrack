@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$zipName = "CineTrack-Production-Ready-Final.zip"
+$zipName = "CineTrack-Final-Backup-Decryption-Remediated.zip"
 $zipPath = Join-Path $projectRoot $zipName
 $stagingDir = Join-Path $projectRoot "staging_archive"
 $testExtractDir = Join-Path $projectRoot "test_extract_verify"
@@ -31,7 +31,8 @@ $excludedDirs = @(
     'playwright-report',
     'staging_archive',
     'test_extract_verify',
-    '.gemini'
+    '.gemini',
+    'backups'
 )
 
 $prohibitedExtensions = @(
@@ -128,9 +129,35 @@ $requiredFound = @{
     '.github/workflows/ci.yml' = $false
     'server/.env.example' = $false
     'client/.env.example' = $false
-    'docs/PRODUCTION_READINESS_FINAL_REPORT.md' = $false
-    'docs/TEST_EXECUTION_REPORT.md' = $false
+    'docs/PRODUCTION_READINESS_AUDIT.md' = $false
     'docs/PRODUCTION_DEPLOYMENT_GUIDE.md' = $false
+    'docs/DATABASE_BACKUP_AND_RECOVERY.md' = $false
+    'docs/DATA_INTEGRITY_AND_MIGRATION.md' = $false
+    'docs/TESTING.md' = $false
+    'docs/SECURITY.md' = $false
+    'docs/TEST_EXECUTION_REPORT.md' = $false
+    'CINETRACK_FINAL_PRODUCTION_READINESS_REPORT.md' = $false
+    'CINETRACK_FINAL_CRITICAL_REMEDIATION_REPORT.md' = $false
+    'CINETRACK_FINAL_RELIABILITY_REMEDIATION_REPORT.md' = $false
+    'CINETRACK_FINAL_RELIABILITY_REMEDIATION_ROUND2_REPORT.md' = $false
+    'CINETRACK_FINAL_RELIABILITY_REPORT.md' = $false
+    'CINETRACK_FINAL_BACKUP_DECRYPTION_DEFECT_FIX_REPORT.md' = $false
+    'server/scripts/schema_manifest.ts' = $false
+    'server/scripts/test_e2e_recovery.ts' = $false
+    'server/tsconfig.scripts.json' = $false
+    'server/src/utils/backup_crypto.ts' = $false
+    'server/scripts/backup_production.ts' = $false
+    'server/tests/backup-crypto.test.ts' = $false
+    'server/tests/backup-production.test.ts' = $false
+    'server/tests/backup-restore.test.ts' = $false
+    'server/tests/backup-restore-structural.test.ts' = $false
+    'server/tests/backup-snapshot-consistency.test.ts' = $false
+    'server/tests/migration-preflight-states.test.ts' = $false
+    'server/tests/seed-safety.test.ts' = $false
+    'server/tests/concurrency.test.ts' = $false
+    'deployment/systemd/cinetrack-backup.service' = $false
+    'deployment/systemd/cinetrack-backup.timer' = $false
+    'server/prisma/migrations/20261123120000_watched_status_check_constraint/migration.sql' = $false
 }
 
 $disallowedRootFiles = @(

@@ -57,7 +57,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     res.cookie(CSRF_COOKIE_NAME, xsrfCookie, {
       httpOnly: false, // Must be readable by client JS for double-submit
       secure: env.NODE_ENV === 'production',
-      sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+      sameSite: env.COOKIE_SAMESITE,
       domain: env.COOKIE_DOMAIN || undefined,
       maxAge: 7 * 24 * 60 * 60 * 1000,
       path: '/',
