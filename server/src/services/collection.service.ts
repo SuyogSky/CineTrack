@@ -12,6 +12,58 @@ import {
 } from '../validators/collection.validator';
 import { generateShareToken, selectRandomElement } from '../utils/random';
 
+type PersonalStatusEntry = {
+  movieId: string;
+  status: 'TO_WATCH' | 'WATCHED';
+  watchedAt: Date | null;
+};
+
+async function withPersonalWatchStatuses<
+  T extends { movies: PersonalStatusEntry[] }
+>(
+  userId: string,
+  collection: T
+): Promise<T> {
+  const movieIds = [
+    ...new Set(collection.movies.map((entry) => entry.movieId)),
+  ];
+
+  if (movieIds.length === 0) {
+    return collection;
+  }
+
+  const statuses = await prisma.userMovieWatchStatus.findMany({
+    where: {
+      userId,
+      movieId: {
+        in: movieIds,
+      },
+    },
+    select: {
+      movieId: true,
+      status: true,
+      watchedAt: true,
+    },
+  });
+
+  const statusByMovieId = new Map(
+    statuses.map((status) => [status.movieId, status])
+  );
+
+  return {
+    ...collection,
+    movies: collection.movies.map((entry) => {
+      const personalStatus = statusByMovieId.get(entry.movieId);
+
+      return {
+        ...entry,
+        status: personalStatus?.status ?? 'TO_WATCH',
+        watchedAt: personalStatus?.watchedAt ?? null,
+      };
+    }),
+  } as T;
+}
+
 export type UserRoleInCollection = 'OWNER' | 'COLLABORATOR' | 'NONE';
 
 export class CollectionService {
@@ -111,7 +163,9 @@ export class CollectionService {
       }
     }
 
-    return watchlist;
+    return watchlist
+      ? await withPersonalWatchStatuses(userId, watchlist)
+      : watchlist;
   }
 
   static async listUserCollections(userId: string) {
@@ -170,8 +224,13 @@ export class CollectionService {
       if (!isOwner && !isMember) {
         throw new ForbiddenError('You do not have access to this collection');
       }
+      const personalizedCollection = await withPersonalWatchStatuses(
+        userId,
+        collection
+      );
+
       return {
-        ...collection,
+        ...personalizedCollection,
         userRole: isOwner ? 'OWNER' : 'COLLABORATOR',
       };
     }
@@ -305,13 +364,18 @@ export class CollectionService {
       throw new NotFoundError('Collection is not available or public sharing has been revoked');
     }
 
+    const personalizedCollection = await withPersonalWatchStatuses(
+      collection.ownerId,
+      collection
+    );
+
     return {
       id: collection.id,
       title: collection.title,
       description: collection.description,
       ownerUsername: collection.owner.username,
       createdAt: collection.createdAt,
-      movies: collection.movies.map((cm) => ({
+      movies: personalizedCollection.movies.map((cm) => ({
         id: cm.id,
         movieId: cm.movieId,
         status: cm.status,
@@ -328,54 +392,114 @@ export class CollectionService {
     userId: string,
     rng: () => number = Math.random
   ) {
-    const { role } = await this.checkCollectionAccess(collectionId, userId);
+    const { role } = await this.checkCollectionAccess(
+      collectionId,
+      userId
+    );
 
     if (role === 'NONE') {
-      throw new ForbiddenError('You do not have access to this collection');
+      throw new ForbiddenError(
+        'You do not have access to this collection'
+      );
     }
 
-    const unwatched = await prisma.collectionMovie.findMany({
+    const entries = await prisma.collectionMovie.findMany({
       where: {
         collectionId,
-        status: 'TO_WATCH',
       },
       include: {
         movie: true,
-        collection: { select: { id: true, title: true } },
-        adder: { select: { id: true, username: true } },
+        collection: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        adder: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
       },
     });
+
+    const movieIds = [...new Set(entries.map((entry) => entry.movieId))];
+
+    const statuses = movieIds.length
+      ? await prisma.userMovieWatchStatus.findMany({
+        where: {
+          userId,
+          movieId: {
+            in: movieIds,
+          },
+        },
+      })
+      : [];
+
+    const statusMap = new Map(
+      statuses.map((status) => [status.movieId, status])
+    );
+
+    const unwatched = entries
+      .map((entry) => {
+        const personalStatus = statusMap.get(entry.movieId);
+
+        return {
+          ...entry,
+          status: personalStatus?.status ?? 'TO_WATCH',
+          watchedAt: personalStatus?.watchedAt ?? null,
+        };
+      })
+      .filter((entry) => entry.status === 'TO_WATCH');
 
     if (unwatched.length === 0) {
       return null;
     }
 
     const picked = selectRandomElement(unwatched, rng);
+
     if (!picked) {
       return null;
     }
+
     return {
       entry: picked,
       movie: picked.movie,
-      sourceCollections: [{ id: picked.collection.id, title: picked.collection.title }],
+      sourceCollections: [
+        {
+          id: picked.collection.id,
+          title: picked.collection.title,
+        },
+      ],
     };
   }
 
   static async getAccountStats(userId: string) {
-    // 1. Fetch all collections user has access to (owned + member)
     const owned = await prisma.collection.findMany({
-      where: { ownerId: userId },
-      select: { id: true, title: true },
+      where: {
+        ownerId: userId,
+      },
+      select: {
+        id: true,
+      },
     });
 
     const memberships = await prisma.collectionMember.findMany({
-      where: { userId },
-      select: { collectionId: true },
+      where: {
+        userId,
+      },
+      select: {
+        collectionId: true,
+      },
     });
 
-    const ownedIds = owned.map((c) => c.id);
-    const memberIds = memberships.map((m) => m.collectionId);
-    const allAccessibleIds = Array.from(new Set([...ownedIds, ...memberIds]));
+    const ownedIds = owned.map((collection) => collection.id);
+    const memberIds = memberships.map((member) => member.collectionId);
+
+    const allAccessibleIds = [
+      ...new Set([...ownedIds, ...memberIds]),
+    ];
 
     if (allAccessibleIds.length === 0) {
       return {
@@ -390,14 +514,14 @@ export class CollectionService {
       };
     }
 
-    // 2. Query all collection movies across accessible collections
     const collectionMovies = await prisma.collectionMovie.findMany({
       where: {
-        collectionId: { in: allAccessibleIds },
+        collectionId: {
+          in: allAccessibleIds,
+        },
       },
       select: {
-        collectionId: true,
-        status: true,
+        movieId: true,
         movie: {
           select: {
             id: true,
@@ -408,25 +532,50 @@ export class CollectionService {
       },
     });
 
-    // 3. Deduplicate across collections by unique media key `${mediaType}:${tmdbId}`
-    interface MediaAggregate {
-      mediaType: 'MOVIE' | 'TV';
-      statuses: Set<'TO_WATCH' | 'WATCHED'>;
-    }
+    const movieIds = [
+      ...new Set(collectionMovies.map((entry) => entry.movieId)),
+    ];
 
-    const mediaMap = new Map<string, MediaAggregate>();
+    const personalStatuses = movieIds.length
+      ? await prisma.userMovieWatchStatus.findMany({
+        where: {
+          userId,
+          movieId: {
+            in: movieIds,
+          },
+        },
+        select: {
+          movieId: true,
+          status: true,
+        },
+      })
+      : [];
 
-    for (const cm of collectionMovies) {
-      const mediaKey = `${cm.movie.mediaType}:${cm.movie.tmdbId}`;
-      let agg = mediaMap.get(mediaKey);
-      if (!agg) {
-        agg = {
-          mediaType: cm.movie.mediaType as 'MOVIE' | 'TV',
-          statuses: new Set(),
-        };
-        mediaMap.set(mediaKey, agg);
+    const statusByMovieId = new Map(
+      personalStatuses.map((status) => [
+        status.movieId,
+        status.status,
+      ])
+    );
+
+    // Deduplicate movies across collections.
+    const mediaMap = new Map<
+      string,
+      {
+        mediaType: 'MOVIE' | 'TV';
+        movieId: string;
       }
-      agg.statuses.add(cm.status);
+    >();
+
+    for (const entry of collectionMovies) {
+      const key = `${entry.movie.mediaType}:${entry.movie.tmdbId}`;
+
+      if (!mediaMap.has(key)) {
+        mediaMap.set(key, {
+          mediaType: entry.movie.mediaType as 'MOVIE' | 'TV',
+          movieId: entry.movieId,
+        });
+      }
     }
 
     let totalMovies = 0;
@@ -434,15 +583,16 @@ export class CollectionService {
     let totalWatched = 0;
     let totalToWatch = 0;
 
-    for (const agg of mediaMap.values()) {
-      if (agg.mediaType === 'MOVIE') {
+    for (const media of mediaMap.values()) {
+      if (media.mediaType === 'MOVIE') {
         totalMovies++;
       } else {
         totalTvSeries++;
       }
 
-      // Canonical rule: If marked WATCHED in any accessible collection, it counts as Watched
-      if (agg.statuses.has('WATCHED')) {
+      const status = statusByMovieId.get(media.movieId);
+
+      if (status === 'WATCHED') {
         totalWatched++;
       } else {
         totalToWatch++;
@@ -467,84 +617,102 @@ export class CollectionService {
     rng?: () => number,
     includeWatched: boolean = false
   ) {
-    // 1. Resolve accessible collections
+    // Resolve collections accessible to this user.
     const owned = await prisma.collection.findMany({
-      where: { ownerId: userId },
-      select: { id: true, title: true },
+      where: {
+        ownerId: userId,
+      },
+      select: {
+        id: true,
+        title: true,
+      },
     });
+
     const memberships = await prisma.collectionMember.findMany({
-      where: { userId },
-      include: { collection: { select: { id: true, title: true } } },
+      where: {
+        userId,
+      },
+      include: {
+        collection: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+      },
     });
 
     const accessibleCollectionsMap = new Map<string, string>();
-    for (const o of owned) {
-      accessibleCollectionsMap.set(o.id, o.title);
-    }
-    for (const m of memberships) {
-      accessibleCollectionsMap.set(m.collection.id, m.collection.title);
+
+    for (const collection of owned) {
+      accessibleCollectionsMap.set(
+        collection.id,
+        collection.title
+      );
     }
 
-    let targetCollectionIds: string[] = [];
+    for (const membership of memberships) {
+      accessibleCollectionsMap.set(
+        membership.collection.id,
+        membership.collection.title
+      );
+    }
+
+    let targetCollectionIds: string[];
 
     if (!requestedCollectionIds || requestedCollectionIds === 'ALL') {
-      targetCollectionIds = Array.from(accessibleCollectionsMap.keys());
-    } else {
-      if (Array.isArray(requestedCollectionIds)) {
-        if (requestedCollectionIds.length === 0) {
-          throw new BadRequestError('At least one collection ID must be specified');
-        }
-        // Validate access
-        for (const cid of requestedCollectionIds) {
-          if (!accessibleCollectionsMap.has(cid)) {
-            throw new ForbiddenError(`You do not have access to collection ${cid}`);
-          }
-        }
-        targetCollectionIds = requestedCollectionIds;
-      } else {
-        throw new BadRequestError('Invalid collection IDs parameter');
+      targetCollectionIds = Array.from(
+        accessibleCollectionsMap.keys()
+      );
+    } else if (Array.isArray(requestedCollectionIds)) {
+      if (requestedCollectionIds.length === 0) {
+        throw new BadRequestError(
+          'At least one collection ID must be specified'
+        );
       }
+
+      for (const collectionId of requestedCollectionIds) {
+        if (!accessibleCollectionsMap.has(collectionId)) {
+          throw new ForbiddenError(
+            `You do not have access to collection ${collectionId}`
+          );
+        }
+      }
+
+      targetCollectionIds = [
+        ...new Set(requestedCollectionIds),
+      ];
+    } else {
+      throw new BadRequestError(
+        'Invalid collection IDs parameter'
+      );
     }
 
     if (targetCollectionIds.length === 0) {
       return null;
     }
 
-    // 2. Reconcile with Dashboard Stats canonical rule:
-    // Any media (mediaType + tmdbId) marked WATCHED in ANY accessible collection
-    // is canonically Watched and excluded from unwatched roulette pool when includeWatched is false.
-    const watchedMediaKeySet = new Set<string>();
-    if (!includeWatched) {
-      const allAccessibleIds = Array.from(accessibleCollectionsMap.keys());
-      const watchedAcrossAccessible = await prisma.collectionMovie.findMany({
-        where: {
-          collectionId: { in: allAccessibleIds },
-          status: 'WATCHED',
-        },
-        select: {
-          movie: {
-            select: {
-              mediaType: true,
-              tmdbId: true,
-            },
-          },
-        },
-      });
-      for (const w of watchedAcrossAccessible) {
-        watchedMediaKeySet.add(`${w.movie.mediaType}:${w.movie.tmdbId}`);
-      }
-    }
-
-    // 3. Query movies from target collections
+    // Fetch all entries in the selected collections.
     const candidateEntries = await prisma.collectionMovie.findMany({
       where: {
-        collectionId: { in: targetCollectionIds },
-        ...(includeWatched ? {} : { status: 'TO_WATCH' }),
+        collectionId: {
+          in: targetCollectionIds,
+        },
       },
       include: {
         movie: true,
-        collection: { select: { id: true, title: true } },
-        adder: { select: { id: true, username: true } },
+        collection: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        adder: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
       },
     });
 
@@ -552,35 +720,82 @@ export class CollectionService {
       return null;
     }
 
-    // 4. Deduplicate across collections by unique media: `${mediaType}:${tmdbId}`
+    // Retrieve this user's personal status for these movies.
+    const movieIds = [
+      ...new Set(candidateEntries.map((entry) => entry.movieId)),
+    ];
+
+    const personalStatuses = await prisma.userMovieWatchStatus.findMany({
+      where: {
+        userId,
+        movieId: {
+          in: movieIds,
+        },
+      },
+    });
+
+    const statusMap = new Map(
+      personalStatuses.map((status) => [
+        status.movieId,
+        status,
+      ])
+    );
+
+    const personalizedEntries = candidateEntries.map((entry) => {
+      const personalStatus = statusMap.get(entry.movieId);
+
+      return {
+        ...entry,
+        status: personalStatus?.status ?? 'TO_WATCH',
+        watchedAt: personalStatus?.watchedAt ?? null,
+      };
+    });
+
+    // Filter using the requesting user's status.
+    const eligibleEntries = personalizedEntries.filter(
+      (entry) =>
+        includeWatched || entry.status !== 'WATCHED'
+    );
+
+    if (eligibleEntries.length === 0) {
+      return null;
+    }
+
+    // Deduplicate the same movie across selected collections.
     const movieCandidatesMap = new Map<
       string,
       {
-        entries: typeof candidateEntries;
-        movie: (typeof candidateEntries)[0]['movie'];
-        sourceCollections: { id: string; title: string }[];
+        entries: typeof personalizedEntries;
+        movie: (typeof candidateEntries)[number]['movie'];
+        sourceCollections: {
+          id: string;
+          title: string;
+        }[];
       }
     >();
 
-    for (const entry of candidateEntries) {
+    for (const entry of eligibleEntries) {
       const key = `${entry.movie.mediaType}:${entry.movie.tmdbId}`;
 
-      // Exclude if canonically Watched across any accessible collection
-      if (!includeWatched && watchedMediaKeySet.has(key)) {
-        continue;
-      }
-
       let group = movieCandidatesMap.get(key);
+
       if (!group) {
         group = {
           entries: [],
           movie: entry.movie,
           sourceCollections: [],
         };
+
         movieCandidatesMap.set(key, group);
       }
+
       group.entries.push(entry);
-      if (!group.sourceCollections.some((sc) => sc.id === entry.collectionId)) {
+
+      if (
+        !group.sourceCollections.some(
+          (collection) => collection.id === entry.collectionId
+        )
+      ) {
         group.sourceCollections.push({
           id: entry.collection.id,
           title: entry.collection.title,
@@ -588,26 +803,35 @@ export class CollectionService {
       }
     }
 
-    const uniqueCandidates = Array.from(movieCandidatesMap.values());
+    const uniqueCandidates = Array.from(
+      movieCandidatesMap.values()
+    );
+
     if (uniqueCandidates.length === 0) {
       return null;
     }
 
-    const chosenGroup = selectRandomElement(uniqueCandidates, rng);
+    const chosenGroup = selectRandomElement(
+      uniqueCandidates,
+      rng
+    );
+
     if (!chosenGroup) {
       return null;
     }
+
     const primaryEntry = chosenGroup.entries[0];
 
     return {
       entry: primaryEntry,
       movie: chosenGroup.movie,
       sourceCollections: chosenGroup.sourceCollections,
-      allEntries: chosenGroup.entries.map((e) => ({
-        id: e.id,
-        collectionId: e.collectionId,
-        collectionTitle: e.collection.title,
-        status: e.status,
+
+      allEntries: chosenGroup.entries.map((entry) => ({
+        id: entry.id,
+        collectionId: entry.collectionId,
+        collectionTitle: entry.collection.title,
+        status: entry.status,
       })),
     };
   }

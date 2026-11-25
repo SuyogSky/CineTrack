@@ -133,7 +133,7 @@ export async function verifyProductionDatabase(databaseUrl: string): Promise<{ d
   } finally {
     try {
       await client.end();
-    } catch {}
+    } catch { }
   }
 }
 
@@ -705,17 +705,17 @@ export async function executeProductionBackup(config: BackupConfig = {}): Promis
     if (fs.existsSync(tempEncryptedFile)) {
       try {
         fs.unlinkSync(tempEncryptedFile);
-      } catch {}
+      } catch { }
     }
     if (fs.existsSync(tempMetaFile)) {
       try {
         fs.unlinkSync(tempMetaFile);
-      } catch {}
+      } catch { }
     }
     // Attempt sweep of stale staging files
     try {
       cleanupAbandonedStagingFiles(stagingDir);
-    } catch {}
+    } catch { }
 
     const durationMs = Date.now() - startTime;
     const failureMeta: BackupMetadata = {
@@ -754,10 +754,10 @@ export async function executeProductionBackup(config: BackupConfig = {}): Promis
     if (!statClientClosed) {
       try {
         await statClient.query('ROLLBACK;');
-      } catch {}
+      } catch { }
       try {
         await statClient.end();
-      } catch {}
+      } catch { }
     }
   }
 }
@@ -1322,7 +1322,7 @@ export async function auditRestoredDatabaseSchema(
   } catch (txErr) {
     try {
       await verifyClient.query('ROLLBACK;');
-    } catch {}
+    } catch { }
     throw txErr;
   }
 
@@ -1476,7 +1476,7 @@ export async function verifyBackupRestorability(
     if (verifyClient) {
       try {
         await verifyClient.end();
-      } catch {}
+      } catch { }
     }
     let cleanupError: Error | null = null;
     if (dbCreated && adminClient) {
@@ -1509,7 +1509,7 @@ export async function verifyBackupRestorability(
     if (adminClient) {
       try {
         await adminClient.end();
-      } catch {}
+      } catch { }
     }
     if (fs.existsSync(tempDecryptedDump)) {
       try {
@@ -1832,7 +1832,7 @@ export async function validateBackupEnvironment(config: BackupConfig = {}): Prom
       try {
         const roleRes = await client.query('SELECT rolcreatedb, rolsuper FROM pg_roles WHERE rolname = current_user;');
         canCreateDb = Boolean(roleRes.rows[0]?.rolcreatedb || roleRes.rows[0]?.rolsuper);
-      } catch {}
+      } catch { }
 
       // Test snapshot export capability
       await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY;');
@@ -1858,8 +1858,8 @@ export async function validateBackupEnvironment(config: BackupConfig = {}): Prom
         config.verifyRestore !== undefined
           ? config.verifyRestore
           : process.env.BACKUP_VERIFY_RESTORE !== 'false' &&
-            process.env.BACKUP_VERIFY_RESTORE !== '0' &&
-            process.env.BACKUP_VERIFY_RESTORE !== 'no';
+          process.env.BACKUP_VERIFY_RESTORE !== '0' &&
+          process.env.BACKUP_VERIFY_RESTORE !== 'no';
 
       if (shouldVerifyRestore) {
         const adminUrl = config.adminUrl || process.env.BACKUP_TEST_RESTORE_ADMIN_URL || rawDbUrl;
@@ -1929,7 +1929,7 @@ export async function validateBackupEnvironment(config: BackupConfig = {}): Prom
           if (probeClient) {
             try {
               await probeClient.end();
-            } catch {}
+            } catch { }
           }
         }
       } else {
@@ -1947,7 +1947,7 @@ export async function validateBackupEnvironment(config: BackupConfig = {}): Prom
       if (client) {
         try {
           await client.end();
-        } catch {}
+        } catch { }
       }
     }
   }
@@ -2022,12 +2022,86 @@ export async function validateBackupEnvironment(config: BackupConfig = {}): Prom
 async function cli() {
   const args = process.argv.slice(2);
 
+  const getOptionValue = (
+    option: string
+  ): string | undefined => {
+    const equalsArgument = args.find((arg) =>
+      arg.startsWith(`${option}=`)
+    );
+
+    if (equalsArgument) {
+      return equalsArgument.slice(option.length + 1);
+    }
+
+    const optionIndex = args.indexOf(option);
+
+    if (optionIndex !== -1) {
+      return args[optionIndex + 1];
+    }
+
+    return undefined;
+  };
+
+  const requestedAction = getOptionValue('--action');
+
+  const isRestore =
+    args.includes('--restore') ||
+    args.includes('--action=restore') ||
+    requestedAction === 'restore';
+
+  if (isRestore) {
+    const backupPath = getOptionValue('--backup');
+    const targetDatabaseUrl = getOptionValue('--target-db');
+    const confirmedTargetDatabase = getOptionValue(
+      '--confirm-target-db'
+    );
+
+    const restorePassphrase =
+      process.env.BACKUP_ENCRYPTION_PASSPHRASE ||
+      process.env.BACKUP_ENCRYPTION_KEY ||
+      '';
+
+    if (!backupPath || !targetDatabaseUrl || !restorePassphrase) {
+      throw new Error(
+        'Restore requires --backup, --target-db and BACKUP_ENCRYPTION_PASSPHRASE.'
+      );
+    }
+
+    console.log('Starting authenticated backup restoration...');
+
+    const result = await executeRestoreFromBackup(
+      path.resolve(backupPath),
+      targetDatabaseUrl,
+      restorePassphrase,
+      {
+        allowDestructiveRestore: args.includes(
+          '--allow-destructive-restore'
+        ),
+        confirmedTargetDatabase,
+      }
+    );
+
+    console.log(
+      `Restore completed successfully in ${result.durationMs}ms.`
+    );
+
+    process.exit(0);
+  }
+
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`CineTrack Production Backup Utility
 Usage:
   node backup_production.js [options]
 
 Options:
+  --action=restore, --restore
+                      Restore an encrypted backup
+  --backup=PATH      Encrypted backup file
+  --target-db=URL    Target PostgreSQL database URL
+  --confirm-target-db=NAME
+                      Explicit target database confirmation
+  --allow-destructive-restore
+                      Explicitly authorize a protected destructive restore
   --verify-restore    Enable full restore verification into a disposable database (default in production)
   --no-verify-restore, --skip-verify-restore
                       Disable restore verification (only for emergency fast dumps)

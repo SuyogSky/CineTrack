@@ -47,6 +47,7 @@ model User {
   receivedInvitations   CollaborationInvitation[] @relation("ReceivedInvitations")
   sessions              Session[]
   addedMovies           CollectionMovie[]
+  movieWatchStatuses UserMovieWatchStatus[]
 
   @@index([email])
   @@index([username])
@@ -71,6 +72,7 @@ model Movie {
   updatedAt        DateTime  @updatedAt
 
   collectionMovies CollectionMovie[]
+  userWatchStatuses UserMovieWatchStatus[]
 
   @@unique([tmdbId, mediaType])
   @@index([tmdbId, mediaType])
@@ -116,6 +118,22 @@ model CollectionMovie {
   @@index([collectionId])
   @@index([movieId])
   @@index([status])
+}
+
+model UserMovieWatchStatus {
+  userId    String
+  movieId   String
+  status    WatchStatus @default(TO_WATCH)
+  watchedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@id([userId, movieId])
+  @@index([movieId])
+  @@index([userId, status])
 }
 
 model CollectionMember {

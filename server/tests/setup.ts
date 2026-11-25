@@ -54,6 +54,7 @@ beforeEach(async () => {
   // Clean up database tables in order of dependencies
   await prisma.session.deleteMany();
   await prisma.collaborationInvitation.deleteMany();
+  await prisma.userMovieWatchStatus.deleteMany();
   await prisma.collectionMovie.deleteMany();
   await prisma.collectionMember.deleteMany();
   await prisma.collection.deleteMany();

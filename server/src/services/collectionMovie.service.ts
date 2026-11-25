@@ -45,7 +45,7 @@ export class CollectionMovieService {
 
     // 3. Create entry
     try {
-      return await prisma.collectionMovie.create({
+      const entry = await prisma.collectionMovie.create({
         data: {
           collectionId,
           movieId: movie.id,
@@ -59,6 +59,21 @@ export class CollectionMovieService {
           adder: { select: { id: true, username: true } },
         },
       });
+
+      const personalStatus = await prisma.userMovieWatchStatus.findUnique({
+        where: {
+          userId_movieId: {
+            userId,
+            movieId: movie.id,
+          }
+        }
+      });
+
+      return {
+        ...entry,
+        status: personalStatus?.status ?? 'TO_WATCH',
+        watchedAt: personalStatus?.watchedAt ?? null,
+      }
     } catch (err: unknown) {
       const error = err as { code?: string };
       if (error?.code === 'P2002') {
@@ -74,38 +89,102 @@ export class CollectionMovieService {
     userId: string,
     input: UpdateCollectionMovieInput
   ) {
-    const { role } = await CollectionService.checkCollectionAccess(collectionId, userId);
+    const { role } = await CollectionService.checkCollectionAccess(
+      collectionId,
+      userId
+    );
+
     if (role === 'NONE') {
       throw new ForbiddenError('You do not have access to this collection');
     }
 
     const entry = await prisma.collectionMovie.findFirst({
-      where: { id: entryId, collectionId },
+      where: {
+        id: entryId,
+        collectionId,
+      },
     });
 
     if (!entry) {
       throw new NotFoundError('Movie entry not found in this collection');
     }
 
-    let watchedAt = entry.watchedAt;
-    if (input.status) {
-      if (input.status === 'WATCHED' && entry.status !== 'WATCHED') {
-        watchedAt = new Date();
-      } else if (input.status === 'TO_WATCH') {
-        watchedAt = null;
-      }
-    }
+    return prisma.$transaction(async (tx) => {
+      // Notes belong to the collection entry and remain shared.
+      const updatedEntry =
+        input.note !== undefined
+          ? await tx.collectionMovie.update({
+            where: { id: entryId },
+            data: { note: input.note },
+            include: {
+              movie: true,
+              adder: {
+                select: {
+                  id: true,
+                  username: true,
+                },
+              },
+            },
+          })
+          : await tx.collectionMovie.findUnique({
+            where: { id: entryId },
+            include: {
+              movie: true,
+              adder: {
+                select: {
+                  id: true,
+                  username: true,
+                },
+              },
+            },
+          });
 
-    return prisma.collectionMovie.update({
-      where: { id: entryId },
-      data: {
-        ...(input.status !== undefined ? { status: input.status, watchedAt } : {}),
-        ...(input.note !== undefined ? { note: input.note } : {}),
-      },
-      include: {
-        movie: true,
-        adder: { select: { id: true, username: true } },
-      },
+      if (!updatedEntry) {
+        throw new NotFoundError('Movie entry no longer exists');
+      }
+
+      const statusKey = {
+        userId_movieId: {
+          userId,
+          movieId: entry.movieId,
+        },
+      };
+
+      let personalStatus = await tx.userMovieWatchStatus.findUnique({
+        where: statusKey,
+      });
+
+      // Watched status belongs to the requesting user, not the collection.
+      if (input.status !== undefined) {
+        const watchedAt =
+          input.status === 'WATCHED'
+            ? personalStatus?.status === 'WATCHED'
+              ? personalStatus.watchedAt ?? new Date()
+              : new Date()
+            : null;
+
+        personalStatus = await tx.userMovieWatchStatus.upsert({
+          where: statusKey,
+
+          create: {
+            userId,
+            movieId: entry.movieId,
+            status: input.status,
+            watchedAt,
+          },
+
+          update: {
+            status: input.status,
+            watchedAt,
+          },
+        });
+      }
+
+      return {
+        ...updatedEntry,
+        status: personalStatus?.status ?? 'TO_WATCH',
+        watchedAt: personalStatus?.watchedAt ?? null,
+      };
     });
   }
 
@@ -185,20 +264,43 @@ export class CollectionMovieService {
       });
 
       try {
-        return await tx.collectionMovie.create({
+        const movedEntry = await tx.collectionMovie.create({
           data: {
             collectionId: destinationCollectionId,
             movieId: entry.movieId,
             addedBy: userId,
-            status: entry.status,
-            watchedAt: entry.watchedAt,
+
+            // Personal status is stored separately.
+            status: 'TO_WATCH',
+            watchedAt: null,
+
             note: entry.note,
           },
           include: {
             movie: true,
-            adder: { select: { id: true, username: true } },
+            adder: {
+              select: {
+                id: true,
+                username: true,
+              },
+            },
           },
         });
+
+        const personalStatus = await tx.userMovieWatchStatus.findUnique({
+          where: {
+            userId_movieId: {
+              userId,
+              movieId: entry.movieId,
+            },
+          },
+        });
+
+        return {
+          ...movedEntry,
+          status: personalStatus?.status ?? 'TO_WATCH',
+          watchedAt: personalStatus?.watchedAt ?? null,
+        };
       } catch (err: unknown) {
         const error = err as { code?: string };
         if (error?.code === 'P2002') {
