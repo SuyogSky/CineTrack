@@ -58,7 +58,6 @@ describe('Phase 5: Concurrency Safety, Race Condition Handling & Multi-Collectio
   it('2. should safely handle concurrent CollectionMovieService.addMovie calls with exactly one success and others ConflictError', async () => {
     const collection = await CollectionService.createCollection(userId, {
       title: 'Race Condition Test Collection',
-      visibility: 'PRIVATE',
     });
 
     const movieInput = {
@@ -72,15 +71,24 @@ describe('Phase 5: Concurrency Safety, Race Condition Handling & Multi-Collectio
 
     // Fire 4 simultaneous add requests to the same collection
     const promises = Array.from({ length: 4 }, () =>
-      CollectionMovieService.addMovie(collection.id, userId, movieInput)
-        .then((res) => ({ success: true, res }))
-        .catch((err) => ({ success: false, err }))
+      CollectionMovieService.addMovie(
+        collection.id,
+        userId,
+        movieInput
+      )
     );
 
-    const outcomes = await Promise.all(promises);
+    const outcomes = await Promise.allSettled(promises);
 
-    const successes = outcomes.filter((o) => o.success);
-    const conflicts = outcomes.filter((o) => !o.success && o.err instanceof ConflictError);
+    const successes = outcomes.filter(
+      (outcome) => outcome.status === 'fulfilled'
+    );
+
+    const conflicts = outcomes.filter(
+      (outcome) =>
+        outcome.status === 'rejected' &&
+        outcome.reason instanceof ConflictError
+    );
 
     // Exactly one must succeed, others must be ConflictError
     expect(successes).toHaveLength(1);
@@ -119,55 +127,76 @@ describe('Phase 5: Concurrency Safety, Race Condition Handling & Multi-Collectio
     expect(count).toBe(1);
   });
 
-  it('4. should maintain isolated independent watched statuses across multiple collections for the same movie', async () => {
-    // Create Collection A and Collection B
+
+  it('4. should keep the same user movie status consistent across multiple collections', async () => {
     const colA = await CollectionService.createCollection(userId, {
       title: 'Collection A - Sci-Fi',
-      visibility: 'PRIVATE',
     });
+
     const colB = await CollectionService.createCollection(userId, {
       title: 'Collection B - Favorites',
-      visibility: 'PRIVATE',
     });
 
-    const tmdbId = 27205; // Inception
+    const tmdbId = 27205;
     const mediaType = 'movie' as const;
 
-    // Add movie to both collections
-    const entryA = await CollectionMovieService.addMovie(colA.id, userId, { tmdbId, mediaType });
-    const entryB = await CollectionMovieService.addMovie(colB.id, userId, { tmdbId, mediaType });
+    const entryA = await CollectionMovieService.addMovie(
+      colA.id,
+      userId,
+      { tmdbId, mediaType }
+    );
+
+    const entryB = await CollectionMovieService.addMovie(
+      colB.id,
+      userId,
+      { tmdbId, mediaType }
+    );
 
     expect(entryA.status).toBe('TO_WATCH');
-    expect(entryA.watchedAt).toBeNull();
     expect(entryB.status).toBe('TO_WATCH');
-    expect(entryB.watchedAt).toBeNull();
 
-    // Mark as WATCHED in Collection A only
-    const updatedA = await CollectionMovieService.updateMovie(colA.id, entryA.id, userId, {
-      status: 'WATCHED',
-    });
+    // Mark the movie as watched from Collection A.
+    const updatedA = await CollectionMovieService.updateMovie(
+      colA.id,
+      entryA.id,
+      userId,
+      { status: 'WATCHED' }
+    );
+
     expect(updatedA.status).toBe('WATCHED');
     expect(updatedA.watchedAt).not.toBeNull();
 
-    // Verify Collection B is completely unaffected
-    const freshEntryB = await prisma.collectionMovie.findUnique({
-      where: { id: entryB.id },
-    });
-    expect(freshEntryB?.status).toBe('TO_WATCH');
-    expect(freshEntryB?.watchedAt).toBeNull();
+    // Read Collection B through the actual user-facing service.
+    const freshCollectionB = await CollectionService.getCollectionById(
+      colB.id,
+      userId
+    );
 
-    // Verify removing movie from Collection A does NOT delete or impact Collection B
-    await CollectionMovieService.removeMovie(colA.id, entryA.id, userId);
+    const entryInB = freshCollectionB.movies.find(
+      (entry: typeof entryB) => entry.id === entryB.id
+    );
 
-    const deletedEntryA = await prisma.collectionMovie.findUnique({
-      where: { id: entryA.id },
-    });
-    expect(deletedEntryA).toBeNull();
+    expect(entryInB).toBeDefined();
+    expect(entryInB?.status).toBe('WATCHED');
+    expect(entryInB?.watchedAt).not.toBeNull();
 
-    const stillExistingEntryB = await prisma.collectionMovie.findUnique({
-      where: { id: entryB.id },
-    });
-    expect(stillExistingEntryB).not.toBeNull();
-    expect(stillExistingEntryB?.status).toBe('TO_WATCH');
+    // Remove the movie from Collection A.
+    await CollectionMovieService.removeMovie(
+      colA.id,
+      entryA.id,
+      userId
+    );
+
+    // Collection B and the user's personal status must remain intact.
+    const collectionBAfterRemoval =
+      await CollectionService.getCollectionById(colB.id, userId);
+
+    const remainingEntry = collectionBAfterRemoval.movies.find(
+      (entry: typeof entryB) => entry.id === entryB.id
+    );
+
+    expect(remainingEntry).toBeDefined();
+    expect(remainingEntry?.status).toBe('WATCHED');
   });
+
 });

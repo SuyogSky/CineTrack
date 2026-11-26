@@ -239,18 +239,30 @@ export class CollectionService {
   }
 
   static async createCollection(userId: string, input: CreateCollectionInput) {
-    return prisma.collection.create({
-      data: {
-        ownerId: userId,
-        title: input.title,
-        description: input.description,
-        visibility: 'PRIVATE',
-      },
-      include: {
-        owner: { select: { id: true, username: true } },
-        _count: { select: { movies: true, members: true } },
-      },
-    });
+    try {
+      return await prisma.collection.create({
+        data: {
+          ownerId: userId,
+          title: input.title.trim(),
+          description: input.description,
+          visibility: 'PRIVATE',
+        },
+        include: {
+          owner: { select: { id: true, username: true } },
+          _count: { select: { movies: true, members: true } },
+        },
+      });
+    } catch (err: unknown) {
+      const error = err as { code?: string };
+
+      if (error.code === 'P2002') {
+        throw new ConflictError(
+          'You already have a collection with this name.'
+        );
+      }
+
+      throw err;
+    }
   }
 
   static async updateCollection(
@@ -258,23 +270,41 @@ export class CollectionService {
     userId: string,
     input: UpdateCollectionInput
   ) {
-    const { role, collection } = await this.checkCollectionAccess(collectionId, userId);
+    const { role } = await this.checkCollectionAccess(collectionId, userId);
 
     if (role !== 'OWNER') {
-      throw new ForbiddenError('Only the collection owner can modify collection details');
+      throw new ForbiddenError(
+        'Only the collection owner can modify collection details'
+      );
     }
 
-    return prisma.collection.update({
-      where: { id: collectionId },
-      data: {
-        ...(input.title !== undefined ? { title: input.title } : {}),
-        ...(input.description !== undefined ? { description: input.description } : {}),
-      },
-      include: {
-        owner: { select: { id: true, username: true } },
-        _count: { select: { movies: true, members: true } },
-      },
-    });
+    try {
+      return await prisma.collection.update({
+        where: { id: collectionId },
+        data: {
+          ...(input.title !== undefined
+            ? { title: input.title.trim() }
+            : {}),
+          ...(input.description !== undefined
+            ? { description: input.description }
+            : {}),
+        },
+        include: {
+          owner: { select: { id: true, username: true } },
+          _count: { select: { movies: true, members: true } },
+        },
+      });
+    } catch (err: unknown) {
+      const error = err as { code?: string };
+
+      if (error.code === 'P2002') {
+        throw new ConflictError(
+          'You already have a collection with this name.'
+        );
+      }
+
+      throw err;
+    }
   }
 
   static async deleteCollection(collectionId: string, userId: string) {

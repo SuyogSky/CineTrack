@@ -1,15 +1,18 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
 import { collectionService } from '../services/collectionService';
 import { Collection, DashboardStats, CollectionMovie } from '../types';
 
 export interface ToggleMovieStatusArgs {
   collectionId: string;
   entryId: string;
+  movieId: string;
+  previousStatus: 'TO_WATCH' | 'WATCHED';
   status: 'TO_WATCH' | 'WATCHED';
 }
 
 interface OptimisticContext {
-  previousCollectionData?: Collection;
+  previousCollections: Array<[QueryKey, Collection | undefined]>;
   previousDefaultWatchlist?: Collection;
   previousDashboardStats?: DashboardStats;
 }
@@ -26,93 +29,136 @@ export function useToggleMovieStatus(options?: {
     ToggleMovieStatusArgs,
     OptimisticContext
   >({
-    mutationFn: ({ collectionId, entryId, status }) =>
-      collectionService.updateMovie(collectionId, entryId, { status }),
+    mutationFn: ({ collectionId, entryId, status }) => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        throw new Error(
+          'You are offline. Your watched status was not saved.'
+        );
+      }
 
-    onMutate: async ({ collectionId, entryId, status }) => {
-      // 1. Cancel in-flight queries so they don't overwrite optimistic updates
+      return collectionService.updateMovie(collectionId, entryId, { status });
+    },
+
+    onMutate: async ({ movieId, previousStatus, status }) => {
       await Promise.all([
-        collectionId
-          ? queryClient.cancelQueries({ queryKey: ['collection', collectionId] })
-          : Promise.resolve(),
+        queryClient.cancelQueries({ queryKey: ['collection'] }),
         queryClient.cancelQueries({ queryKey: ['defaultWatchlist'] }),
         queryClient.cancelQueries({ queryKey: ['dashboardStats'] }),
       ]);
 
-      // 2. Snapshot previous values for rollback
-      const previousCollectionData = collectionId
-        ? queryClient.getQueryData<Collection>(['collection', collectionId])
-        : undefined;
-      const previousDefaultWatchlist = queryClient.getQueryData<Collection>(['defaultWatchlist']);
-      const previousDashboardStats = queryClient.getQueryData<DashboardStats>(['dashboardStats']);
+      // Save every cached collection so failed requests can roll back safely.
+      const previousCollections =
+        queryClient.getQueriesData<Collection>({
+          queryKey: ['collection'],
+        });
 
-      const nowIso = new Date().toISOString();
+      const previousDefaultWatchlist =
+        queryClient.getQueryData<Collection>(['defaultWatchlist']);
 
-      const updateCollectionMovies = (col: Collection | undefined): Collection | undefined => {
-        if (!col || !col.movies) return col;
+      const previousDashboardStats =
+        queryClient.getQueryData<DashboardStats>(['dashboardStats']);
+
+      const now = new Date().toISOString();
+
+      const updateCollection = (
+        collection: Collection | undefined
+      ): Collection | undefined => {
+        if (!collection?.movies) return collection;
+
         return {
-          ...col,
-          movies: col.movies.map((m) =>
-            m.id === entryId
+          ...collection,
+          movies: collection.movies.map((entry) =>
+            entry.movieId === movieId
               ? {
-                  ...m,
+                  ...entry,
                   status,
-                  watchedAt: status === 'WATCHED' ? (m.watchedAt || nowIso) : null,
+                  watchedAt:
+                    status === 'WATCHED'
+                      ? entry.watchedAt || now
+                      : null,
                 }
-              : m
+              : entry
           ),
         };
       };
 
-      // 3. Optimistically update ['collection', collectionId]
-      if (collectionId) {
-        queryClient.setQueryData<Collection>(['collection', collectionId], updateCollectionMovies);
+      // Update all cached collection-detail queries.
+      for (const [queryKey] of previousCollections) {
+        queryClient.setQueryData<Collection>(
+          queryKey,
+          updateCollection
+        );
       }
 
-      // 4. Optimistically update ['defaultWatchlist']
-      queryClient.setQueryData<Collection>(['defaultWatchlist'], updateCollectionMovies);
+      // Update the default watchlist if it contains this movie.
+      queryClient.setQueryData<Collection>(
+        ['defaultWatchlist'],
+        updateCollection
+      );
 
-      // 5. Optimistically update ['dashboardStats']
-      if (previousDashboardStats) {
-        queryClient.setQueryData<DashboardStats>(['dashboardStats'], (old) => {
-          if (!old) return old;
-          const delta = status === 'WATCHED' ? 1 : -1;
-          return {
-            ...old,
-            totalToWatch: Math.max(0, old.totalToWatch - delta),
-            totalWatched: Math.max(0, old.totalWatched + delta),
-          };
-        });
+      // Update dashboard counts only when the status actually changes.
+      if (previousDashboardStats && previousStatus !== status) {
+        const watchedDelta = status === 'WATCHED' ? 1 : -1;
+
+        queryClient.setQueryData<DashboardStats>(
+          ['dashboardStats'],
+          (old) => {
+            if (!old) return old;
+
+            return {
+              ...old,
+              totalWatched: Math.max(
+                0,
+                old.totalWatched + watchedDelta
+              ),
+              totalToWatch: Math.max(
+                0,
+                old.totalToWatch - watchedDelta
+              ),
+            };
+          }
+        );
       }
 
       return {
-        previousCollectionData,
+        previousCollections,
         previousDefaultWatchlist,
         previousDashboardStats,
       };
     },
 
-    onError: (err, variables, context) => {
-      if (context?.previousCollectionData && variables.collectionId) {
-        queryClient.setQueryData(['collection', variables.collectionId], context.previousCollectionData);
-      }
+    onError: (error, variables, context) => {
+      // Restore all collection caches.
+      context?.previousCollections.forEach(([queryKey, data]) => {
+        if (data) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      });
+
       if (context?.previousDefaultWatchlist) {
-        queryClient.setQueryData(['defaultWatchlist'], context.previousDefaultWatchlist);
+        queryClient.setQueryData(
+          ['defaultWatchlist'],
+          context.previousDefaultWatchlist
+        );
       }
+
       if (context?.previousDashboardStats) {
-        queryClient.setQueryData(['dashboardStats'], context.previousDashboardStats);
+        queryClient.setQueryData(
+          ['dashboardStats'],
+          context.previousDashboardStats
+        );
       }
-      options?.onError?.(err, variables);
+
+      options?.onError?.(error, variables);
     },
 
     onSuccess: (data, variables) => {
       options?.onSuccess?.(data, variables);
     },
 
-    onSettled: (_data, _err, variables) => {
-      if (variables.collectionId) {
-        queryClient.invalidateQueries({ queryKey: ['collection', variables.collectionId] });
-      }
+    onSettled: () => {
+      // Reconcile optimistic state with the database-backed server response.
+      queryClient.invalidateQueries({ queryKey: ['collection'] });
       queryClient.invalidateQueries({ queryKey: ['defaultWatchlist'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
       queryClient.invalidateQueries({ queryKey: ['collections'] });

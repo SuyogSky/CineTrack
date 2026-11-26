@@ -11,6 +11,7 @@ import {
   MoveMovieInput,
   UpdateCollectionMovieInput,
 } from '../validators/collection.validator';
+import type { Prisma } from '@prisma/client';
 
 export class CollectionMovieService {
   static async addMovie(
@@ -109,7 +110,7 @@ export class CollectionMovieService {
       throw new NotFoundError('Movie entry not found in this collection');
     }
 
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       // Notes belong to the collection entry and remain shared.
       const updatedEntry =
         input.note !== undefined
@@ -258,7 +259,7 @@ export class CollectionMovieService {
     }
 
     // Move atomically in a transaction
-    return prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.collectionMovie.delete({
         where: { id: entryId },
       });

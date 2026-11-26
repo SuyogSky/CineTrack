@@ -2,6 +2,9 @@
 CREATE TYPE "CollectionVisibility" AS ENUM ('PRIVATE', 'PUBLIC_LINK');
 
 -- CreateEnum
+CREATE TYPE "MediaType" AS ENUM ('MOVIE', 'TV');
+
+-- CreateEnum
 CREATE TYPE "WatchStatus" AS ENUM ('TO_WATCH', 'WATCHED');
 
 -- CreateEnum
@@ -26,6 +29,7 @@ CREATE TABLE "User" (
 CREATE TABLE "Movie" (
     "id" TEXT NOT NULL,
     "tmdbId" INTEGER NOT NULL,
+    "mediaType" "MediaType" NOT NULL DEFAULT 'MOVIE',
     "title" TEXT NOT NULL,
     "originalTitle" TEXT,
     "overview" TEXT,
@@ -74,6 +78,19 @@ CREATE TABLE "CollectionMovie" (
 );
 
 -- CreateTable
+CREATE TABLE "UserMovieWatchStatus" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "movieId" TEXT NOT NULL,
+    "status" "WatchStatus" NOT NULL DEFAULT 'TO_WATCH',
+    "watchedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "UserMovieWatchStatus_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "CollectionMember" (
     "id" TEXT NOT NULL,
     "collectionId" TEXT NOT NULL,
@@ -103,10 +120,13 @@ CREATE TABLE "Session" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "tokenHash" TEXT NOT NULL,
+    "previousTokenHash" TEXT,
+    "historicalTokenHashes" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "userAgent" TEXT,
     "ipAddress" TEXT,
     "expiresAt" TIMESTAMP(3) NOT NULL,
     "revokedAt" TIMESTAMP(3),
+    "rotatedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -126,10 +146,13 @@ CREATE INDEX "User_email_idx" ON "User"("email");
 CREATE INDEX "User_username_idx" ON "User"("username");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Movie_tmdbId_key" ON "Movie"("tmdbId");
+CREATE INDEX "Movie_tmdbId_mediaType_idx" ON "Movie"("tmdbId", "mediaType");
 
 -- CreateIndex
-CREATE INDEX "Movie_tmdbId_idx" ON "Movie"("tmdbId");
+CREATE INDEX "Movie_mediaType_idx" ON "Movie"("mediaType");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Movie_tmdbId_mediaType_key" ON "Movie"("tmdbId", "mediaType");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Collection_shareToken_key" ON "Collection"("shareToken");
@@ -151,6 +174,15 @@ CREATE INDEX "CollectionMovie_status_idx" ON "CollectionMovie"("status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "CollectionMovie_collectionId_movieId_key" ON "CollectionMovie"("collectionId", "movieId");
+
+-- CreateIndex
+CREATE INDEX "UserMovieWatchStatus_movieId_idx" ON "UserMovieWatchStatus"("movieId");
+
+-- CreateIndex
+CREATE INDEX "UserMovieWatchStatus_userId_status_idx" ON "UserMovieWatchStatus"("userId", "status");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "UserMovieWatchStatus_userId_movieId_key" ON "UserMovieWatchStatus"("userId", "movieId");
 
 -- CreateIndex
 CREATE INDEX "CollectionMember_collectionId_idx" ON "CollectionMember"("collectionId");
@@ -179,6 +211,9 @@ CREATE INDEX "Session_userId_idx" ON "Session"("userId");
 -- CreateIndex
 CREATE INDEX "Session_tokenHash_idx" ON "Session"("tokenHash");
 
+-- CreateIndex
+CREATE INDEX "Session_previousTokenHash_idx" ON "Session"("previousTokenHash");
+
 -- AddForeignKey
 ALTER TABLE "Collection" ADD CONSTRAINT "Collection_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -190,6 +225,12 @@ ALTER TABLE "CollectionMovie" ADD CONSTRAINT "CollectionMovie_movieId_fkey" FORE
 
 -- AddForeignKey
 ALTER TABLE "CollectionMovie" ADD CONSTRAINT "CollectionMovie_addedBy_fkey" FOREIGN KEY ("addedBy") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserMovieWatchStatus" ADD CONSTRAINT "UserMovieWatchStatus_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "UserMovieWatchStatus" ADD CONSTRAINT "UserMovieWatchStatus_movieId_fkey" FOREIGN KEY ("movieId") REFERENCES "Movie"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "CollectionMember" ADD CONSTRAINT "CollectionMember_collectionId_fkey" FOREIGN KEY ("collectionId") REFERENCES "Collection"("id") ON DELETE CASCADE ON UPDATE CASCADE;

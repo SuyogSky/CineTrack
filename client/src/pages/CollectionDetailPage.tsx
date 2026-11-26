@@ -326,33 +326,30 @@ export const CollectionDetailPage: React.FC = () => {
           <button
             type="button"
             onClick={() => setStatusFilter('ALL')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              statusFilter === 'ALL'
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${statusFilter === 'ALL'
                 ? 'bg-zinc-800 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white'
-            }`}
+              }`}
           >
             All ({allMovies.length})
           </button>
           <button
             type="button"
             onClick={() => setStatusFilter('TO_WATCH')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              statusFilter === 'TO_WATCH'
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${statusFilter === 'TO_WATCH'
                 ? 'bg-amber-500/20 text-amber-300 shadow-sm border border-amber-500/30'
                 : 'text-zinc-400 hover:text-white'
-            }`}
+              }`}
           >
             To Watch ({allMovies.filter((m) => m.status === 'TO_WATCH').length})
           </button>
           <button
             type="button"
             onClick={() => setStatusFilter('WATCHED')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-              statusFilter === 'WATCHED'
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${statusFilter === 'WATCHED'
                 ? 'bg-emerald-500/20 text-emerald-300 shadow-sm border border-emerald-500/30'
                 : 'text-zinc-400 hover:text-white'
-            }`}
+              }`}
           >
             Watched ({allMovies.filter((m) => m.status === 'WATCHED').length})
           </button>
@@ -419,6 +416,8 @@ export const CollectionDetailPage: React.FC = () => {
                         toggleStatusMutation.mutate({
                           collectionId: id || entry.collectionId,
                           entryId,
+                          movieId: entry.movieId,
+                          previousStatus: entry.status,
                           status: st,
                         })
                       }
@@ -474,6 +473,8 @@ export const CollectionDetailPage: React.FC = () => {
                             toggleStatusMutation.mutate({
                               collectionId: id || entry.collectionId,
                               entryId,
+                              movieId: entry.movieId,
+                              previousStatus: entry.status,
                               status: st,
                             })
                           }

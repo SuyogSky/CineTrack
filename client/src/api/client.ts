@@ -4,6 +4,7 @@ import { ApiResponse } from '../types';
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
+  timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
   },

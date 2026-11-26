@@ -172,4 +172,20 @@ describe('Collections & Watchlist Integration Tests', () => {
 
     expect(unauthorizedGet.status).toBe(403);
   });
+
+  it('should reject duplicate collection titles regardless of case or surrounding spaces', async () => {
+    const firstResponse = await request(app)
+      .post('/api/collections')
+      .set('Cookie', authCookie)
+      .send({ title: 'DC Movies' });
+
+    expect(firstResponse.status).toBe(201);
+
+    const duplicateResponse = await request(app)
+      .post('/api/collections')
+      .set('Cookie', authCookie)
+      .send({ title: ' dc movies ' });
+
+    expect(duplicateResponse.status).toBe(409);
+  });
 });
