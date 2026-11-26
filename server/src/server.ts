@@ -18,7 +18,7 @@ function validateNodeVersion() {
 }
 validateNodeVersion();
 
-const server = app.listen(env.PORT, async () => {
+const server = app.listen(env.PORT, '0.0.0.0', async () => {
   try {
     await prisma.$connect();
     console.log(`🎬 CineTrack Server running at http://localhost:${env.PORT}`);

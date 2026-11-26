@@ -223,7 +223,9 @@ export const DashboardPage: React.FC = () => {
                 onToggleStatus={(entryId, st) =>
                   toggleStatusMutation.mutate({
                     collectionId: entry.collectionId,
-                    entryId,
+                    entryId: entry.id,
+                    movieId: entry.movieId,
+                    previousStatus: entry.status,
                     status: st,
                   })
                 }

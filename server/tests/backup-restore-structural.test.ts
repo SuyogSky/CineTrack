@@ -416,7 +416,7 @@ describe('Priority 1: Comprehensive Structural Schema Verification & Corruption 
       await testClient.query(`
         UPDATE "_prisma_migrations" 
         SET rolled_back_at = now() 
-        WHERE migration_name = '20261123120000_watched_status_check_constraint';
+        WHERE migration_name = '20261125170000_add_watch_status_check_constraint';
       `);
       await expect(
         auditRestoredDatabaseSchema(testClient, ALL_EXPECTED_TABLES)
@@ -431,11 +431,11 @@ describe('Priority 1: Comprehensive Structural Schema Verification & Corruption 
     try {
       await testClient.query(`
         DELETE FROM "_prisma_migrations" 
-        WHERE migration_name = '20261123120000_watched_status_check_constraint';
+        WHERE migration_name = '20261125170000_add_watch_status_check_constraint';
       `);
       await expect(
         auditRestoredDatabaseSchema(testClient, ALL_EXPECTED_TABLES)
-      ).rejects.toThrow(/missing expected applied migration "20261123120000_watched_status_check_constraint"/);
+      ).rejects.toThrow(/missing expected applied migration "20261125170000_add_watch_status_check_constraint"/);
     } finally {
       await testClient.query('ROLLBACK;');
     }
@@ -447,7 +447,7 @@ describe('Priority 1: Comprehensive Structural Schema Verification & Corruption 
       await testClient.query(`
         UPDATE "_prisma_migrations" 
         SET finished_at = NULL 
-        WHERE migration_name = '20261123120000_watched_status_check_constraint';
+        WHERE migration_name = '20261125170000_add_watch_status_check_constraint';
       `);
       await expect(
         auditRestoredDatabaseSchema(testClient, ALL_EXPECTED_TABLES)
@@ -464,7 +464,7 @@ describe('Priority 1: Comprehensive Structural Schema Verification & Corruption 
       await testClient.query(`
         UPDATE "_prisma_migrations" 
         SET checksum = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' 
-        WHERE migration_name = '20261123120000_watched_status_check_constraint';
+        WHERE migration_name = '20261125170000_add_watch_status_check_constraint';
       `);
       await expect(
         auditRestoredDatabaseSchema(testClient, ALL_EXPECTED_TABLES)

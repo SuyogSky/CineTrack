@@ -187,5 +187,17 @@ describe('Collections & Watchlist Integration Tests', () => {
       .send({ title: ' dc movies ' });
 
     expect(duplicateResponse.status).toBe(409);
+
+    const otherCollectionResponse = await request(app)
+      .post('/api/collections')
+      .set('Cookie', authCookie)
+      .send({ title: 'Action Movies' });
+    expect(otherCollectionResponse.status).toBe(201);
+
+    const duplicateRenameResponse = await request(app)
+      .patch(`/api/collections/${otherCollectionResponse.body.data.collection.id}`)
+      .set('Cookie', authCookie)
+      .send({ title: '  dC mOvIeS  ' });
+    expect(duplicateRenameResponse.status).toBe(409);
   });
 });

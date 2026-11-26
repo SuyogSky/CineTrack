@@ -503,7 +503,7 @@ describe('Phase 6: Production Backup Strategy, Scheduler & Retention Worker Test
 
     expect(meta.status).toBe('SUCCESS');
     expect(meta.restoreVerification?.status).toBe('VERIFIED');
-    expect(meta.restoreVerification?.verifiedTablesCount).toBe(8);
+    expect(meta.restoreVerification?.verifiedTablesCount).toBe(9);
     expect(meta.restoreVerification?.checksumsVerified).toBe(true);
   }, 120000);
 

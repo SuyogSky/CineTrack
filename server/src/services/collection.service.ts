@@ -18,6 +18,37 @@ type PersonalStatusEntry = {
   watchedAt: Date | null;
 };
 
+/**
+ * Performs an early, user-friendly duplicate check. The matching unique
+ * expression index is the final concurrency-safe guard against races.
+ */
+async function assertCollectionTitleAvailable(
+  userId: string,
+  title: string,
+  excludeCollectionId?: string
+): Promise<void> {
+  const matches = excludeCollectionId
+    ? await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "Collection"
+        WHERE "ownerId" = ${userId}
+          AND LOWER(BTRIM("title")) = LOWER(BTRIM(${title}))
+          AND "id" <> ${excludeCollectionId}
+        LIMIT 1
+      `
+    : await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "Collection"
+        WHERE "ownerId" = ${userId}
+          AND LOWER(BTRIM("title")) = LOWER(BTRIM(${title}))
+        LIMIT 1
+      `;
+
+  if (matches.length > 0) {
+    throw new ConflictError('You already have a collection with this name.');
+  }
+}
+
 async function withPersonalWatchStatuses<
   T extends { movies: PersonalStatusEntry[] }
 >(
@@ -239,11 +270,14 @@ export class CollectionService {
   }
 
   static async createCollection(userId: string, input: CreateCollectionInput) {
+    const title = input.title.trim();
+    await assertCollectionTitleAvailable(userId, title);
+
     try {
       return await prisma.collection.create({
         data: {
           ownerId: userId,
-          title: input.title.trim(),
+          title,
           description: input.description,
           visibility: 'PRIVATE',
         },
@@ -275,6 +309,14 @@ export class CollectionService {
     if (role !== 'OWNER') {
       throw new ForbiddenError(
         'Only the collection owner can modify collection details'
+      );
+    }
+
+    if (input.title !== undefined) {
+      await assertCollectionTitleAvailable(
+        userId,
+        input.title.trim(),
+        collectionId
       );
     }
 

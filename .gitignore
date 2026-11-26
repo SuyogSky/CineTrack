@@ -41,3 +41,4 @@ Thumbs.db
 
 # Prisma Generated
 server/prisma/migrations/*_*/migration_lock.toml
+.neon

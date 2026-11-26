@@ -15,7 +15,7 @@
     "prisma:generate": "prisma generate",
     "prisma:preflight": "tsx scripts/migration_preflight.ts",
     "test:e2e-recovery": "tsx scripts/test_e2e_recovery.ts",
-    "db:test-backup": "tsx scripts/test_backup_restore.ts \"postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public\"",
+    "db:test-backup": "tsx scripts/test_backup_restore.ts",
     "backup:create": "tsx scripts/backup_production.ts",
     "backup:validate": "tsx scripts/backup_production.ts --validate",
     "backup:worker": "tsx scripts/backup_production.ts --schedule",

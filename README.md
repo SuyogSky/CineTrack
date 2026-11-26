@@ -1,6 +1,6 @@
 # CineTrack 🎬
 
-**CineTrack** is a production-grade, full-stack movie watchlist and collaborative collection management platform built with the **PERN stack (PostgreSQL, Express.js, React, Node.js) and TypeScript**.
+**CineTrack** is a full-stack movie watchlist and collaborative collection management platform built with the **PERN stack (PostgreSQL, Express.js, React, Node.js) and TypeScript**.
 
 CineTrack allows film enthusiasts to discover movies through TMDb, manage personalized watchlists, track completion dates atomically, build themed custom collections, share view-only links publicly, invite friends to collaborate with granular permissions, and decide what to watch next with **Movie Night Roulette**.
 
@@ -88,12 +88,14 @@ erDiagram
     USER ||--o{ COLLABORATION_INVITATION : receives
     USER ||--o{ SESSION : authenticates
     USER ||--o{ COLLECTION_MOVIE : adds
+    USER ||--o{ USER_MOVIE_WATCH_STATUS : tracks
 
     COLLECTION ||--o{ COLLECTION_MOVIE : contains
     COLLECTION ||--o{ COLLECTION_MEMBER : has_members
     COLLECTION ||--o{ COLLABORATION_INVITATION : invites
 
     MOVIE ||--o{ COLLECTION_MOVIE : referenced_in
+    MOVIE ||--o{ USER_MOVIE_WATCH_STATUS : watched_by
 
     USER {
         uuid id PK
@@ -147,6 +149,17 @@ erDiagram
         datetime updatedAt
     }
 
+    USER_MOVIE_WATCH_STATUS {
+        string id PK
+        uuid userId FK
+        uuid movieId FK
+        enum status "TO_WATCH, WATCHED"
+        datetime watchedAt
+        datetime createdAt
+        datetime updatedAt
+        string userId_movieId UK
+    }
+
     COLLECTION_MEMBER {
         uuid id PK
         uuid collectionId FK
@@ -178,6 +191,8 @@ erDiagram
         datetime updatedAt
     }
 ```
+
+**Watch-status ownership:** `UserMovieWatchStatus` is the source of truth for watched state. Its `(userId, movieId)` unique key means each user has an independent status for a title, even when the title appears in several collections or a shared collection. The legacy status fields on `CollectionMovie` are retained for schema compatibility and are not used as the user's personal status.
 
 ---
 
@@ -279,8 +294,8 @@ Create `.env` in `server/`:
 ```env
 PORT=5000
 NODE_ENV=development
-DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack?schema=public"
-TEST_DATABASE_URL="postgresql://cinetrack:cinetrack123@localhost:5432/cinetrack_test?schema=public"
+DATABASE_URL="postgresql://cinetrack_user:REPLACE_WITH_LOCAL_DB_PASSWORD@localhost:5432/cinetrack?schema=public"
+TEST_DATABASE_URL="postgresql://cinetrack_user:REPLACE_WITH_LOCAL_DB_PASSWORD@localhost:5432/cinetrack_test?schema=public"
 EXPECTED_TEST_DATABASE_NAME="cinetrack_test"
 JWT_ACCESS_SECRET="cinetrack_dev_access_secret_key_32_chars_min_length_2026!"
 JWT_REFRESH_SECRET="cinetrack_dev_refresh_secret_key_32_chars_min_length_2026!"

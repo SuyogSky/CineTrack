@@ -12,11 +12,42 @@ import {
 import { CINETRACK_SCHEMA_MANIFEST } from './schema_manifest';
 import { setRestrictiveDirMode } from '../src/utils/backup_crypto';
 
-const DB_HOST = 'localhost';
-const DB_PORT = 5432;
-const DB_USER = 'cinetrack';
-const DB_PASS = 'cinetrack123';
-const BACKUP_PASSPHRASE = 'CineTrackE2ERecoverySuperSecure2026!#$';
+const ADMIN_DATABASE_URL = process.env.BACKUP_TEST_RESTORE_ADMIN_URL;
+const BACKUP_PASSPHRASE =
+  process.env.BACKUP_ENCRYPTION_PASSPHRASE || process.env.BACKUP_ENCRYPTION_KEY;
+
+function getSafeTestDatabaseConfig() {
+  if (!ADMIN_DATABASE_URL) {
+    throw new Error('BACKUP_TEST_RESTORE_ADMIN_URL is required for isolated E2E recovery verification.');
+  }
+  if (!BACKUP_PASSPHRASE || BACKUP_PASSPHRASE.trim().length < 32) {
+    throw new Error('BACKUP_ENCRYPTION_PASSPHRASE (or BACKUP_ENCRYPTION_KEY) must contain at least 32 characters.');
+  }
+
+  const adminUrl = new URL(ADMIN_DATABASE_URL);
+  const host = adminUrl.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const allowedHosts = ['localhost', '127.0.0.1', '::1', 'postgres', 'host.docker.internal'];
+  const adminDatabase = adminUrl.pathname.replace(/^\//, '');
+
+  if (!allowedHosts.includes(host)) {
+    throw new Error(`E2E recovery is restricted to local test hosts; received "${host}".`);
+  }
+  if (adminDatabase !== 'postgres') {
+    throw new Error(`E2E recovery requires an admin URL targeting the "postgres" database, not "${adminDatabase}".`);
+  }
+  if (!adminUrl.username || !adminUrl.password) {
+    throw new Error('BACKUP_TEST_RESTORE_ADMIN_URL must include the PostgreSQL test username and password.');
+  }
+
+  return {
+    adminUrl: adminUrl.toString(),
+    createDatabaseUrl(databaseName: string) {
+      const url = new URL(adminUrl.toString());
+      url.pathname = `/${databaseName}`;
+      return url.toString();
+    },
+  };
+}
 
 function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
@@ -26,6 +57,7 @@ async function runE2ERecoveryTest() {
   console.log('🚀 Starting Complete End-to-End Database Backup, Encryption, and Restoration Recovery Test...');
   const startTime = Date.now();
   const testId = Date.now();
+  const databaseConfig = getSafeTestDatabaseConfig();
   const sourceDbName = `cinetrack_disposable_source_${testId}`;
   const targetDbName = `cinetrack_restore_target_${testId}`;
   const tempBackupDir = path.resolve(__dirname, `../temp_e2e_backups_${testId}`);
@@ -41,13 +73,7 @@ async function runE2ERecoveryTest() {
     }
 
     // 1. Connect admin client
-    adminClient = new Client({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASS,
-      database: 'postgres',
-    });
+    adminClient = new Client({ connectionString: databaseConfig.adminUrl });
     await adminClient.connect();
     console.log('✅ Admin connection established to PostgreSQL 18.6.');
 
@@ -57,7 +83,7 @@ async function runE2ERecoveryTest() {
 
     // 3. Apply Prisma migrations to source database
     console.log(`📜 Step 2/13: Applying Prisma migrations to "${sourceDbName}"...`);
-    const sourceDbUrl = `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${sourceDbName}?schema=public`;
+    const sourceDbUrl = databaseConfig.createDatabaseUrl(sourceDbName);
     execFileSync(
       'npx',
       ['prisma', 'migrate', 'deploy'],
@@ -73,13 +99,7 @@ async function runE2ERecoveryTest() {
 
     // 4. Connect to source database and seed rich representative data
     console.log(`🌱 Step 3/13: Seeding representative CineTrack relational data into "${sourceDbName}"...`);
-    sourceClient = new Client({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASS,
-      database: sourceDbName,
-    });
+    sourceClient = new Client({ connectionString: sourceDbUrl });
     await sourceClient.connect();
 
     const u1Id = 'e2e_user_alice_' + testId;
@@ -90,6 +110,7 @@ async function runE2ERecoveryTest() {
     const c2Id = 'e2e_col_scifi_' + testId;
     const cm1Id = 'e2e_cm_1_' + testId;
     const cm2Id = 'e2e_cm_2_' + testId;
+    const watchStatus1Id = 'e2e_watch_status_1_' + testId;
     const mem1Id = 'e2e_mem_1_' + testId;
     const inv1Id = 'e2e_inv_1_' + testId;
     const s1Id = 'e2e_sess_1_' + testId;
@@ -119,13 +140,18 @@ async function runE2ERecoveryTest() {
         ($3, $2, 'Sci-Fi Collection', 'PUBLIC_LINK'::"CollectionVisibility", false, NOW(), NOW());
     `, [c1Id, u1Id, c2Id]);
 
-    // Collection Movies
+    // Collection entries contain shared metadata only. Watched status is personal per user/movie.
     await sourceClient.query(`
       INSERT INTO "CollectionMovie" (id, "collectionId", "movieId", "addedBy", status, "watchedAt", "createdAt", "updatedAt")
       VALUES 
-        ($1, $2, $3, $4, 'WATCHED'::"WatchStatus", NOW(), NOW(), NOW()),
+        ($1, $2, $3, $4, 'TO_WATCH'::"WatchStatus", NULL, NOW(), NOW()),
         ($5, $6, $7, $4, 'TO_WATCH'::"WatchStatus", NULL, NOW(), NOW());
     `, [cm1Id, c1Id, m1Id, u1Id, cm2Id, c2Id, m2Id]);
+
+    await sourceClient.query(`
+      INSERT INTO "UserMovieWatchStatus" (id, "userId", "movieId", status, "watchedAt", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, 'WATCHED'::"WatchStatus", NOW(), NOW(), NOW());
+    `, [watchStatus1Id, u1Id, m1Id]);
 
     // Collection Members
     await sourceClient.query(`
@@ -146,7 +172,7 @@ async function runE2ERecoveryTest() {
     `, [s1Id, u1Id, `token_${testId}`, `prev_${testId}`, [`hist1_${testId}`, `hist2_${testId}`]]);
 
     await sourceClient.query('COMMIT;');
-    console.log('✅ Representative relational dataset inserted across all 7 application tables.');
+    console.log('✅ Representative relational dataset inserted across all 8 application tables.');
 
     // 5. Execute production backup with AES-256-GCM (CTBK02, 600,000 iterations)
     console.log(`📦 Step 4/13: Creating authenticated encrypted production backup (CTBK02, 600,000 PBKDF2 iterations)...`);
@@ -183,19 +209,13 @@ async function runE2ERecoveryTest() {
 
     // 9. Execute decryption and restoration into target database
     console.log(`📥 Step 8/13: Restoring decrypted snapshot into "${targetDbName}"...`);
-    const targetDbUrl = `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${targetDbName}?schema=public`;
+    const targetDbUrl = databaseConfig.createDatabaseUrl(targetDbName);
     await executeRestoreFromBackup(backupResult.archivePath, targetDbUrl, BACKUP_PASSPHRASE);
     console.log('✅ pg_restore executed cleanly into target database.');
 
     // 10. Connect to restored database
     console.log(`🔗 Step 9/13: Connecting to restored database "${targetDbName}"...`);
-    targetClient = new Client({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASS,
-      database: targetDbName,
-    });
+    targetClient = new Client({ connectionString: targetDbUrl });
     await targetClient.connect();
 
     // 11. Run comprehensive restored schema audit against schema manifest
@@ -231,12 +251,13 @@ async function runE2ERecoveryTest() {
         c.title AS collection_title,
         m.title AS movie_title,
         m."mediaType",
-        cm.status,
-        cm."watchedAt"
+        COALESCE(ums.status, 'TO_WATCH'::"WatchStatus") AS status,
+        ums."watchedAt"
       FROM "User" u
       JOIN "Collection" c ON c."ownerId" = u.id
       JOIN "CollectionMovie" cm ON cm."collectionId" = c.id
       JOIN "Movie" m ON m.id = cm."movieId"
+      LEFT JOIN "UserMovieWatchStatus" ums ON ums."userId" = u.id AND ums."movieId" = m.id
       WHERE u.id = $1
       ORDER BY m.title;
     `, [u1Id]);
@@ -265,12 +286,23 @@ async function runE2ERecoveryTest() {
 
     // Query 3: Invariant: Watched status check constraint active in restored database
     const checkViolated = await targetClient.query(`
-      SELECT conname FROM pg_constraint WHERE conname = 'CollectionMovie_status_watchedAt_check';
+      SELECT conname
+      FROM pg_constraint
+      WHERE conname IN (
+        'CollectionMovie_status_watchedAt_check',
+        'UserMovieWatchStatus_status_watchedAt_check'
+      );
     `);
-    if (checkViolated.rows.length === 0) {
-      throw new Error('CHECK constraint missing on restored database!');
+    const restoredChecks = new Set(checkViolated.rows.map((row: { conname: string }) => row.conname));
+    for (const requiredCheck of [
+      'CollectionMovie_status_watchedAt_check',
+      'UserMovieWatchStatus_status_watchedAt_check',
+    ]) {
+      if (!restoredChecks.has(requiredCheck)) {
+        throw new Error(`${requiredCheck} CHECK constraint is missing on restored database!`);
+      }
     }
-    console.log(`   - Verified CollectionMovie_status_watchedAt_check constraint present and active.`);
+    console.log('   - Verified collection-entry and personal watch-status CHECK constraints are present and active.');
 
     console.log(`🎉 Step 13/13: End-to-End Recovery Test PASSED 100%! All 13 recovery stages validated.`);
     const totalDuration = Date.now() - startTime;

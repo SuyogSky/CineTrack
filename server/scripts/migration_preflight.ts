@@ -9,6 +9,7 @@ export const EXPECTED_APPLICATION_TABLES = [
   'Collection',
   'Movie',
   'CollectionMovie',
+  'UserMovieWatchStatus',
   'CollectionMember',
   'CollaborationInvitation',
   'Session',
@@ -668,7 +669,7 @@ export async function runMigrationPreflight(
     const colRes = await client.query(`
       SELECT table_name, column_name, data_type, is_nullable, column_default
       FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name IN ('User', 'Collection', 'Movie', 'CollectionMovie', 'CollectionMember', 'CollaborationInvitation', 'Session');
+      WHERE table_schema = 'public' AND table_name IN ('User', 'Collection', 'Movie', 'CollectionMovie', 'UserMovieWatchStatus', 'CollectionMember', 'CollaborationInvitation', 'Session');
     `);
     const tableColumns = new Map<string, Map<string, { data_type: string; is_nullable: string; column_default: string | null }>>();
     for (const row of colRes.rows) {
@@ -734,6 +735,15 @@ export async function runMigrationPreflight(
         status: { type: 'USER-DEFINED', nullable: false, default: "'TO_WATCH'::\"WatchStatus\"" },
         watchedAt: { type: 'timestamp without time zone', nullable: true, default: null },
         note: { type: 'text', nullable: true, default: null },
+        createdAt: { type: 'timestamp without time zone', nullable: false, default: 'CURRENT_TIMESTAMP' },
+        updatedAt: { type: 'timestamp without time zone', nullable: false, default: null },
+      },
+      UserMovieWatchStatus: {
+        id: { type: 'text', nullable: false, default: null },
+        userId: { type: 'text', nullable: false, default: null },
+        movieId: { type: 'text', nullable: false, default: null },
+        status: { type: 'USER-DEFINED', nullable: false, default: '\'TO_WATCH\'::"WatchStatus"' },
+        watchedAt: { type: 'timestamp without time zone', nullable: true, default: null },
         createdAt: { type: 'timestamp without time zone', nullable: false, default: 'CURRENT_TIMESTAMP' },
         updatedAt: { type: 'timestamp without time zone', nullable: false, default: null },
       },
@@ -1044,7 +1054,36 @@ export async function runMigrationPreflight(
         updateAction: 'c',
         isDeferrable: false,
       },
-      // Check Constraint: status and watchedAt synchronization
+      {
+        name: 'UserMovieWatchStatus_userId_fkey',
+        type: 'f',
+        tableName: 'UserMovieWatchStatus',
+        foreignTable: 'User',
+        columns: ['userId'],
+        foreignColumns: ['id'],
+        deleteAction: 'c',
+        updateAction: 'c',
+        isDeferrable: false,
+      },
+      {
+        name: 'UserMovieWatchStatus_movieId_fkey',
+        type: 'f',
+        tableName: 'UserMovieWatchStatus',
+        foreignTable: 'Movie',
+        columns: ['movieId'],
+        foreignColumns: ['id'],
+        deleteAction: 'c',
+        updateAction: 'c',
+        isDeferrable: false,
+      },
+      // Check Constraint: personal watched status and timestamp synchronization
+      {
+        name: 'UserMovieWatchStatus_status_watchedAt_check',
+        type: 'c',
+        tableName: 'UserMovieWatchStatus',
+        validateCheckDef: validateWatchedStatusCheckConstraint,
+      },
+      // Check Constraint: legacy collection-entry status and timestamp synchronization
       {
         name: 'CollectionMovie_status_watchedAt_check',
         type: 'c',
@@ -1059,6 +1098,7 @@ export async function runMigrationPreflight(
       { name: 'CollectionMember_pkey', type: 'p', tableName: 'CollectionMember', columns: ['id'] },
       { name: 'CollaborationInvitation_pkey', type: 'p', tableName: 'CollaborationInvitation', columns: ['id'] },
       { name: 'Session_pkey', type: 'p', tableName: 'Session', columns: ['id'] },
+      { name: 'UserMovieWatchStatus_pkey', type: 'p', tableName: 'UserMovieWatchStatus', columns: ['id'] },
     ];
 
     for (const reqCon of requiredConstraints) {
@@ -1302,6 +1342,13 @@ export async function runMigrationPreflight(
         unique: true,
         accessMethod: 'btree',
         expectedColumns: ['tokenHash'],
+      },
+      {
+        name: 'UserMovieWatchStatus_userId_movieId_key',
+        tableName: 'UserMovieWatchStatus',
+        unique: true,
+        accessMethod: 'btree',
+        expectedColumns: ['userId', 'movieId'],
       },
     ];
 

@@ -1,8 +1,10 @@
 # CineTrack — Production Deployment, Architecture & Runbook Guide
 
+> **Readiness status:** This is a deployment runbook, not proof of deployment certification. Complete the current build, test, migration, preflight, and backup/restore checks before exposing a production instance.
+
 **Project**: CineTrack  
-**Version**: 1.0.0 Production Ready  
-**Date**: November 21, 2026  
+**Version**: 1.0.0  
+**Updated**: November 25, 2026  
 
 ---
 

@@ -276,7 +276,7 @@ export function validateWatchedStatusConstraintSemantics(definition: string): bo
 }
 
 export const CINETRACK_SCHEMA_MANIFEST: SchemaManifest = {
-  version: '20261123120000',
+  version: '20261126100000',
   tables: {
     User: {
       name: 'User',
@@ -338,6 +338,19 @@ export const CINETRACK_SCHEMA_MANIFEST: SchemaManifest = {
         status: { name: 'status', dataType: 'USER-DEFINED', udtName: 'WatchStatus', nullable: false, default: "'TO_WATCH'::WatchStatus", maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
         watchedAt: { name: 'watchedAt', dataType: 'timestamp without time zone', udtName: 'timestamp', nullable: true, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
         note: { name: 'note', dataType: 'text', udtName: 'text', nullable: true, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+        createdAt: { name: 'createdAt', dataType: 'timestamp without time zone', udtName: 'timestamp', nullable: false, default: 'CURRENT_TIMESTAMP', maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+        updatedAt: { name: 'updatedAt', dataType: 'timestamp without time zone', udtName: 'timestamp', nullable: false, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+      },
+    },
+    UserMovieWatchStatus: {
+      name: 'UserMovieWatchStatus',
+      primaryKey: ['id'],
+      columns: {
+        id: { name: 'id', dataType: 'text', udtName: 'text', nullable: false, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+        userId: { name: 'userId', dataType: 'text', udtName: 'text', nullable: false, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+        movieId: { name: 'movieId', dataType: 'text', udtName: 'text', nullable: false, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+        status: { name: 'status', dataType: 'USER-DEFINED', udtName: 'WatchStatus', nullable: false, default: '\'TO_WATCH\'::WatchStatus', maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
+        watchedAt: { name: 'watchedAt', dataType: 'timestamp without time zone', udtName: 'timestamp', nullable: true, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
         createdAt: { name: 'createdAt', dataType: 'timestamp without time zone', udtName: 'timestamp', nullable: false, default: 'CURRENT_TIMESTAMP', maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
         updatedAt: { name: 'updatedAt', dataType: 'timestamp without time zone', udtName: 'timestamp', nullable: false, default: null, maxLength: null, numericPrecision: null, numericScale: null, isIdentity: false, isGenerated: false, generationExpression: null, collationName: null },
       },
@@ -411,12 +424,22 @@ export const CINETRACK_SCHEMA_MANIFEST: SchemaManifest = {
     { name: 'CollaborationInvitation_inviterId_fkey', table: 'CollaborationInvitation', columns: ['inviterId'], foreignTable: 'User', foreignColumns: ['id'], deleteAction: 'c', updateAction: 'c', isDeferrable: false, isInitiallyDeferred: false, isValidated: true },
     { name: 'CollaborationInvitation_inviteeId_fkey', table: 'CollaborationInvitation', columns: ['inviteeId'], foreignTable: 'User', foreignColumns: ['id'], deleteAction: 'c', updateAction: 'c', isDeferrable: false, isInitiallyDeferred: false, isValidated: true },
     { name: 'Session_userId_fkey', table: 'Session', columns: ['userId'], foreignTable: 'User', foreignColumns: ['id'], deleteAction: 'c', updateAction: 'c', isDeferrable: false, isInitiallyDeferred: false, isValidated: true },
+    { name: 'UserMovieWatchStatus_userId_fkey', table: 'UserMovieWatchStatus', columns: ['userId'], foreignTable: 'User', foreignColumns: ['id'], deleteAction: 'c', updateAction: 'c', isDeferrable: false, isInitiallyDeferred: false, isValidated: true },
+    { name: 'UserMovieWatchStatus_movieId_fkey', table: 'UserMovieWatchStatus', columns: ['movieId'], foreignTable: 'Movie', foreignColumns: ['id'], deleteAction: 'c', updateAction: 'c', isDeferrable: false, isInitiallyDeferred: false, isValidated: true },
   ],
   uniqueConstraints: [],
   checkConstraints: [
     {
       name: 'CollectionMovie_status_watchedAt_check',
       table: 'CollectionMovie',
+      isValidated: true,
+      isDeferrable: false,
+      isInitiallyDeferred: false,
+      semanticValidator: validateWatchedStatusConstraintSemantics,
+    },
+    {
+      name: 'UserMovieWatchStatus_status_watchedAt_check',
+      table: 'UserMovieWatchStatus',
       isValidated: true,
       isDeferrable: false,
       isInitiallyDeferred: false,
@@ -432,6 +455,7 @@ export const CINETRACK_SCHEMA_MANIFEST: SchemaManifest = {
     { name: 'CollectionMember_pkey', table: 'CollectionMember', unique: true, accessMethod: 'btree', keyColumns: ['id'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: 'CollaborationInvitation_pkey', table: 'CollaborationInvitation', unique: true, accessMethod: 'btree', keyColumns: ['id'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: 'Session_pkey', table: 'Session', unique: true, accessMethod: 'btree', keyColumns: ['id'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
+    { name: 'UserMovieWatchStatus_pkey', table: 'UserMovieWatchStatus', unique: true, accessMethod: 'btree', keyColumns: ['id'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: '_prisma_migrations_pkey', table: '_prisma_migrations', unique: true, accessMethod: 'btree', keyColumns: ['id'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
 
     // Unique Indexes
@@ -441,10 +465,13 @@ export const CINETRACK_SCHEMA_MANIFEST: SchemaManifest = {
     { name: 'User_email_lower_key', table: 'User', unique: true, accessMethod: 'btree', keyColumns: ['lower(email)'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: 'Collection_shareToken_key', table: 'Collection', unique: true, accessMethod: 'btree', keyColumns: ['"shareToken"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: 'Collection_owner_default_watchlist_key', table: 'Collection', unique: true, accessMethod: 'btree', keyColumns: ['"ownerId"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: '("isDefaultWatchlist" = true)' },
+    { name: 'Collection_owner_title_normalized_key', table: 'Collection', unique: true, accessMethod: 'btree', keyColumns: ['"ownerId"', 'lower(btrim(title))'], includedColumns: [], operatorClasses: ['text_ops', 'text_ops'], isDescending: [false, false], isNullsFirst: [false, false], predicate: null },
     { name: 'Movie_tmdbId_mediaType_key', table: 'Movie', unique: true, accessMethod: 'btree', keyColumns: ['"tmdbId"', '"mediaType"'], includedColumns: [], operatorClasses: ['int4_ops', 'enum_ops'], isDescending: [false, false], isNullsFirst: [false, false], predicate: null },
     { name: 'CollectionMovie_collectionId_movieId_key', table: 'CollectionMovie', unique: true, accessMethod: 'btree', keyColumns: ['"collectionId"', '"movieId"'], includedColumns: [], operatorClasses: ['text_ops', 'text_ops'], isDescending: [false, false], isNullsFirst: [false, false], predicate: null },
     { name: 'CollectionMember_collectionId_userId_key', table: 'CollectionMember', unique: true, accessMethod: 'btree', keyColumns: ['"collectionId"', '"userId"'], includedColumns: [], operatorClasses: ['text_ops', 'text_ops'], isDescending: [false, false], isNullsFirst: [false, false], predicate: null },
     { name: 'Session_tokenHash_key', table: 'Session', unique: true, accessMethod: 'btree', keyColumns: ['"tokenHash"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
+
+    { name: 'UserMovieWatchStatus_userId_movieId_key', table: 'UserMovieWatchStatus', unique: true, accessMethod: 'btree', keyColumns: ['\"userId\"', '\"movieId\"'], includedColumns: [], operatorClasses: ['text_ops', 'text_ops'], isDescending: [false, false], isNullsFirst: [false, false], predicate: null },
 
     // Non-Unique Indexes
     { name: 'User_email_idx', table: 'User', unique: false, accessMethod: 'btree', keyColumns: ['email'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
@@ -464,12 +491,13 @@ export const CINETRACK_SCHEMA_MANIFEST: SchemaManifest = {
     { name: 'Session_previousTokenHash_idx', table: 'Session', unique: false, accessMethod: 'btree', keyColumns: ['"previousTokenHash"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: 'Session_tokenHash_idx', table: 'Session', unique: false, accessMethod: 'btree', keyColumns: ['"tokenHash"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
     { name: 'Session_userId_idx', table: 'Session', unique: false, accessMethod: 'btree', keyColumns: ['"userId"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
+    { name: 'UserMovieWatchStatus_movieId_idx', table: 'UserMovieWatchStatus', unique: false, accessMethod: 'btree', keyColumns: ['"movieId"'], includedColumns: [], operatorClasses: ['text_ops'], isDescending: [false], isNullsFirst: [false], predicate: null },
+    { name: 'UserMovieWatchStatus_userId_status_idx', table: 'UserMovieWatchStatus', unique: false, accessMethod: 'btree', keyColumns: ['"userId"', 'status'], includedColumns: [], operatorClasses: ['text_ops', 'enum_ops'], isDescending: [false, false], isNullsFirst: [false, false], predicate: null },
   ],
   migrations: [
-    { name: '20261116083539_init', checksum: '9989fd17b5f3529330bb45f32c301386f55c829bc98a4b489202e692ce300eea' },
-    { name: '20261116123000_add_media_type', checksum: '035a037329221fe08a8371c8806d0f3db739a3ae155018370a5cc8855e463b52' },
-    { name: '20261117103000_security_and_integrity_hardening', checksum: '54986e195b94fbe00983c2e19ee253cb2738e6bd14c3c79015b62848224cd470' },
-    { name: '20261117123000_token_family_history', checksum: 'd6272eb5f9cebf5736e5f01deeb8fb4328ea0ff34bc6d1631aa7e41f6155c2c3' },
-    { name: '20261123120000_watched_status_check_constraint', checksum: 'ee2ac0819623083ee8f1fff9225a566a2769b4267b19f17ad28650afd3b6f988' },
+    { name: '20261125155738_init', checksum: '3ba0de5c1c98b6c7dbc86be38142a92fe25b1faec3cd7ef52b5aa2b7bd3931d2' },
+    { name: '20261125170000_add_watch_status_check_constraint', checksum: 'a3feb34d82871a29b38f75e02a5950b82edbb73b9462a730f6208a38dff6e7c2' },
+    { name: '20261125180000_restore_integrity_indexes_and_constraints', checksum: '08cad89aa27cc4e9783a56537ed3693579de2c6cdc17b29a9f5ff9314139aea7' },
+    { name: '20261126100000_collection_title_case_insensitive_unique', checksum: '0f98de4eb04ba070d18726c15bcddfd92f07249ebdbee322e2fd2864f958e7fe' },
   ],
 };

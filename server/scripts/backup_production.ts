@@ -375,6 +375,7 @@ export const ALL_EXPECTED_APP_TABLES = [
   'Movie',
   'Collection',
   'CollectionMovie',
+  'UserMovieWatchStatus',
   'CollectionMember',
   'CollaborationInvitation',
   'Session',

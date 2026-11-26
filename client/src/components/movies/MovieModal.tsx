@@ -90,6 +90,8 @@ export const MovieModal: React.FC<MovieModalProps> = ({
     toggleStatusMutation.mutate({
       collectionId: entry.collectionId,
       entryId: entry.id,
+      movieId: entry.movieId,
+      previousStatus: currentStatus,
       status: nextStatus,
     });
   };
@@ -124,11 +126,10 @@ export const MovieModal: React.FC<MovieModalProps> = ({
           <div className="absolute top-4 left-6 z-20">
             <span
               data-testid="modal-status-badge"
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg ${
-                currentStatus === 'WATCHED'
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md shadow-lg ${currentStatus === 'WATCHED'
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
                   : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-              }`}
+                }`}
             >
               {currentStatus === 'WATCHED' ? (
                 <>
@@ -253,11 +254,10 @@ export const MovieModal: React.FC<MovieModalProps> = ({
                 data-testid="modal-status-toggle-button"
                 disabled={updateMutation.isPending}
                 onClick={handleToggleStatus}
-                className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all min-h-[44px] shadow-sm ${
-                  currentStatus === 'WATCHED'
+                className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all min-h-[44px] shadow-sm ${currentStatus === 'WATCHED'
                     ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/60'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                }`}
+                  }`}
               >
                 <CheckCircle2 className="w-4 h-4" />
                 {currentStatus === 'WATCHED' ? 'Mark as Unwatched' : 'Mark as Watched'}
